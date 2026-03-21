@@ -79,6 +79,26 @@ def discover_project_root(tests_dir: Path) -> Path:
     return tests_dir.parent if tests_dir.parent != tests_dir else tests_dir
 
 
+def resolve_manifest_path(base_dir: Path, raw_path: str) -> Path:
+    """Resolve a STRATUM.toml path, including simple ${ENV_VAR}/... forms."""
+    raw_path = raw_path.strip()
+    if not raw_path:
+        return base_dir
+
+    if raw_path.startswith("${") and "}" in raw_path:
+        end = raw_path.index("}")
+        env_var = raw_path[2:end]
+        env_value = os.environ.get(env_var, "").strip()
+        if not env_value:
+            return Path(raw_path)
+
+        remainder = raw_path[end + 1:].lstrip("/\\")
+        root = Path(env_value).expanduser()
+        return (root / remainder).resolve() if remainder else root.resolve()
+
+    return (base_dir / raw_path).resolve()
+
+
 TESTS_DIR = discover_tests_dir()
 RACK_CONFIG = TESTS_DIR / "rack.toml"
 RESULTS_DIR = TESTS_DIR / "rack_results"
@@ -574,6 +594,28 @@ def load_rack_config() -> dict:
         return tomllib.load(f)
 
 
+def resolve_active_lane(args) -> str:
+    """Resolve the active execution lane for this rack invocation."""
+    cli_lane = (getattr(args, "lane", None) or "").strip().lower()
+    if cli_lane:
+        return cli_lane
+
+    config = load_rack_config()
+    config_lane = str(config.get("rack", {}).get("default_lane", "")).strip().lower()
+    if config_lane:
+        return config_lane
+
+    env_lane = (
+        os.environ.get("WN_RACK_LANE", "").strip().lower()
+        or os.environ.get("RACK_LANE", "").strip().lower()
+        or os.environ.get("WN_TEST_LANE", "").strip().lower()
+    )
+    if env_lane:
+        return env_lane
+
+    return "fast"
+
+
 def get_internal_tools_for_stratum(stratum: str) -> list[dict]:
     """Get internal tools required by a stratum.
 
@@ -994,6 +1036,7 @@ def cmd_run(args):
     concern_filter = getattr(args, "concern", None)
     subtest_filter = getattr(args, "subtest_filter", None)
     test_filter = getattr(args, "test_filter", None) or getattr(args, "test", None)
+    active_lane = resolve_active_lane(args)
 
     # Determine which strata to run
     if args.stratum:
@@ -1015,6 +1058,7 @@ def cmd_run(args):
 
     print("\n" + "=" * 60)
     print(f"RACK RUN: {', '.join(target_strata)}")
+    print(f"LANE: {active_lane}")
     if concern_filter:
         print(f"CONCERN FILTER: {concern_filter}")
     if subtest_filter:
@@ -1057,6 +1101,7 @@ def cmd_run(args):
     all_results = {
         "last_updated": run_timestamp,
         "strata_run": target_strata,  # This run's strata
+        "lane": active_lane,
         "by_stratum": existing_results.get("by_stratum", {}),  # Preserve existing
         "summary": {},  # Will be recalculated
         "duration": 0.0,
@@ -1104,6 +1149,7 @@ def cmd_run(args):
 
         stratum_results = {
             "timestamp": datetime.now().isoformat(),
+            "lane": active_lane,
             "subtests": [],
             "passed": 0,
             "failed": 0,
@@ -1142,7 +1188,11 @@ def cmd_run(args):
             f'--json-report --json-report-file="{json_report}"{extra_args}'
         )
         print(f"  Running: pytest {stratum_dir.name} ({len(pytest_targets)} target(s))")
-        result = subprocess.run(cmd, shell=True, cwd=PROJECT_ROOT)
+        pytest_env = os.environ.copy()
+        pytest_env["RACK_LANE"] = active_lane
+        pytest_env["WN_RACK_LANE"] = active_lane
+        pytest_env["WN_TEST_LANE"] = active_lane
+        result = subprocess.run(cmd, shell=True, cwd=PROJECT_ROOT, env=pytest_env)
 
         # Parse results
         if json_report.exists():
@@ -1545,7 +1595,7 @@ def cmd_inventory(args):
 
             if test_cases:
                 # Normalize path
-                cases_path = (stratum_dir / test_cases).resolve()
+                cases_path = resolve_manifest_path(stratum_dir, test_cases)
                 rel_path = cases_path.relative_to(TESTS_DIR) if cases_path.is_relative_to(TESTS_DIR) else cases_path
 
                 if str(rel_path) not in declared_paths:
@@ -1668,7 +1718,7 @@ def get_inventory_data() -> dict:
             test_case_type = subtest_info.get("test_case_type", "")
 
             if test_cases:
-                cases_path = (stratum_dir / test_cases).resolve()
+                cases_path = resolve_manifest_path(stratum_dir, test_cases)
                 rel_path = cases_path.relative_to(TESTS_DIR) if cases_path.is_relative_to(TESTS_DIR) else cases_path
 
                 if str(rel_path) not in declared_paths:
@@ -3238,7 +3288,7 @@ def _generate_subtest_section(stratum: str, subtest: dict, manifest: dict, rack_
         file_count_str = ""
         if test_cases_path:
             stratum_dir = TESTS_DIR / stratum
-            cases_full_path = stratum_dir / test_cases_path
+            cases_full_path = resolve_manifest_path(stratum_dir, test_cases_path)
             if cases_full_path.exists():
                 file_count = sum(1 for _ in cases_full_path.rglob("*") if _.is_file())
                 file_count_str = f" ({file_count} files)"
@@ -3674,6 +3724,7 @@ Examples:
     run_parser.add_argument("stratum", nargs="?", help="Stratum or subtest to run (e.g., L5, L5_sch_tools, or L5_001)")
     run_parser.add_argument("--all", action="store_true", help="Run all strata")
     run_parser.add_argument("--concern", help="Run only subtests tagged with concern (supports hierarchy, e.g., svg.text)")
+    run_parser.add_argument("--lane", choices=["fast", "full", "strict"], help="Execution lane (defaults from rack.toml or fast)")
     run_parser.add_argument("--test", help="Run specific test name/expression within selected target(s)")
 
     # status command
