@@ -68,6 +68,8 @@ def discover_tests_dir() -> Path:
     for candidate in (cwd, *cwd.parents):
         if (candidate / "rack.toml").exists():
             return candidate
+        if (candidate / "tests" / "rack.toml").exists():
+            return (candidate / "tests").resolve()
 
     return cwd
 

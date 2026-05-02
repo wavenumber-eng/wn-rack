@@ -71,9 +71,12 @@ Rack resolves the active suite directory in this order:
 1. `RACK_TESTS_DIR`
 2. `WN_RACK_TESTS_DIR`
 3. nearest parent of the current working directory containing `rack.toml`
-4. current working directory
+4. nearest parent of the current working directory containing `tests/rack.toml`
+5. current working directory
 
-This allows both installed-package usage and compatibility wrappers.
+This allows both installed-package usage and compatibility wrappers. The
+`tests/rack.toml` fallback lets package roots use `rack list` and
+`rack run L0_foundation` without manually setting `RACK_TESTS_DIR`.
 
 ### Derived Paths
 
