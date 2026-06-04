@@ -8,5 +8,7 @@ dist/
 .coverage
 .coverage.*
 htmlcov/
-uv.lock
 .env
+rack_results/
+**/rack_results/
+.ruff_cache/

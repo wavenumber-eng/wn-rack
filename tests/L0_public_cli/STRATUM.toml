@@ -1,0 +1,37 @@
+name = "Public CLI"
+order = 0
+description = "Public CLI and API startup checks"
+enabled = true
+concerns = ["cli"]
+
+objectives = [
+    "Rack exposes version and help commands",
+    "Public output API imports and serializes",
+]
+
+[dependencies]
+strata = []
+
+[[subtests]]
+id = "L0_001"
+file = "test_L0_001_cli_entrypoint.py"
+name = "CLI Entrypoint"
+description = "Validate version/help startup and public command help"
+concerns = ["cli"]
+test_case_type = "contract"
+test_cases = "../../docs/contracts/command_manifest.v0.json"
+
+[subtests.code_under_test]
+module = "rack.cli"
+
+[[subtests]]
+id = "L0_002"
+file = "test_L0_002_public_api.py"
+name = "Public API"
+description = "Validate RackOutput and thread-local helpers"
+concerns = ["cli"]
+test_case_type = "contract"
+test_cases = "../../docs/contracts/interface_manifest.v0.json"
+
+[subtests.code_under_test]
+module = "rack.cli"

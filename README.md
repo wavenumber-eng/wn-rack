@@ -22,8 +22,10 @@ pip install wn-rack
 For local package development:
 
 ```bash
-uv sync
+uv sync --all-extras
+uv run rack --version
 uv run rack --help
+uv run rack run --all
 ```
 
 ## What Rack Does
@@ -127,10 +129,13 @@ This supports both package-first usage and legacy wrapper scripts.
 - `rack inventory`
 - `rack new stratum`
 - `rack new subtest`
+- `rack version`
 
 Examples:
 
 ```bash
+rack --version
+rack version
 rack run
 rack run L0
 rack run L5_001
@@ -168,10 +173,26 @@ See [Python API](./docs/python-api.md).
 ## Documentation
 
 - [Docs Index](./docs/index.md)
+- [Setup](./docs/setup.html)
 - [Configuration Reference](./docs/configuration.md)
 - [Command Reference](./docs/commands.md)
 - [Architecture](./docs/architecture.md)
+- [Architecture Contract](./docs/architecture.html)
+- [CLI Design](./docs/design/cli.html)
+- [Public API Design](./docs/design/public-api.html)
 - [Python API](./docs/python-api.md)
+
+## Development Standard
+
+Rack now uses the Wavenumber Python baseline in legacy-adoption mode:
+
+- committed `uv.lock`
+- Rack self-hosted tests
+- Ruff and Pyright gates
+- HTML design docs and JSON contracts
+- date-based release version `2026.6.4`
+- GitHub Release published workflow with PyPI trusted publishing
+- documented legacy exceptions for the current monolithic CLI module
 
 ## Current Behavior Notes
 

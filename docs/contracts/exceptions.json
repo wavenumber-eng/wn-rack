@@ -1,0 +1,18 @@
+{
+  "exceptions": [
+    {
+      "id": "RACK-LEGACY-CLI-MONOLITH",
+      "rule": "production file size and module boundary",
+      "scope": "src/rack/cli.py",
+      "rationale": "Rack predates the standards repo and currently keeps CLI, runner, reporting, and public output API code in one module. The first standards adoption release adds tests and ratchets before module extraction.",
+      "review": "Must not grow without explicit rationale; split after self-hosting tests cover behavior."
+    },
+    {
+      "id": "RACK-LEGACY-PYRIGHT-BASIC",
+      "rule": "pyright strict",
+      "scope": "src/rack/cli.py",
+      "rationale": "The existing monolithic implementation uses broad dictionaries and dynamic argparse state. The adoption release starts with Pyright basic and records this as technical debt.",
+      "review": "Move toward strict checks as modules are extracted and typed."
+    }
+  ]
+}

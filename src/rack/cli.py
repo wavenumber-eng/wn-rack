@@ -41,19 +41,25 @@ Usage Examples:
 """
 
 import argparse
+import hashlib
 import html as html_module
+import importlib.metadata as importlib_metadata
 import json
+import os
+import platform
+import re
 import subprocess
 import sys
 import threading
+import time
 import tomllib
 import webbrowser
 from dataclasses import dataclass, field
-import time
 from datetime import datetime
-import os
 from pathlib import Path
 from typing import Any
+
+from rack._version import __version__
 
 # =============================================================================
 # Configuration
@@ -115,8 +121,6 @@ SOURCE_DIR = TESTS_DIR.parent
 # =============================================================================
 # Source Hashing - RACK-037 (Hybrid: File Hash + Git Context)
 # =============================================================================
-
-import hashlib
 
 
 def hash_file(file_path: Path) -> str:
@@ -420,8 +424,13 @@ class RackOutput:
         """
         self.timings[name] = duration_ms
 
-    def add_comparison(self, name: str, expected: Any, actual: Any,
-                       passed: bool = None) -> None:
+    def add_comparison(
+        self,
+        name: str,
+        expected: Any,
+        actual: Any,
+        passed: bool | None = None,
+    ) -> None:
         """
         Add a comparison between expected and actual values.
 
@@ -530,7 +539,7 @@ class RackOutput:
         """Serialize to JSON string."""
         return json.dumps(self.to_dict(), indent=2)
 
-    def save(self, output_dir: Path = None) -> Path:
+    def save(self, output_dir: Path | None = None) -> Path:
         """
         Save output to JSON file.
 
@@ -1121,7 +1130,7 @@ def cmd_run(args):
         # Build any internal tools required by this stratum
         if not build_internal_tools(stratum):
             print(f"  [WARNING] Some internal tools failed to build for {stratum}")
-            print(f"            Tests that require these tools may be skipped")
+            print("            Tests that require these tools may be skipped")
 
         stratum_dir = get_stratum_dir(stratum)
 
@@ -1550,7 +1559,7 @@ def cmd_status(args):
         needs_run_sorted = sorted(needs_run, key=lambda x: all_strata.index(x) if x in all_strata else 999)
         # Convert to short names (L0, L1, etc.)
         short_names = [s.split("_")[0] for s in needs_run_sorted]
-        print(f"\n  To get clean bill of health:")
+        print("\n  To get clean bill of health:")
         print(f"    rack run {' '.join(short_names)}")
 
     return 0
@@ -1659,7 +1668,7 @@ def cmd_inventory(args):
         print("\nORPHANED DIRECTORIES:")
         for path, file_count in orphaned:
             print(f"  {path}/ ({file_count} files)")
-            print(f"    -> No test references this directory")
+            print("    -> No test references this directory")
 
     if not args.orphans:
         print("\nSUBTESTS BY TEST CASE TYPE:")
@@ -2197,7 +2206,7 @@ def cmd_new_stratum(args):
     # Validate stratum name format
     match = re.match(r'^L(\d+)_(.+)$', name)
     if not match:
-        print(f"Error: Stratum name must match L{{n}}_{{name}} format (e.g., L2_roundtrip)")
+        print("Error: Stratum name must match L{n}_{name} format (e.g., L2_roundtrip)")
         print(f"  Got: {name}")
         return 1
 
@@ -2270,14 +2279,14 @@ def test_placeholder():
     strata_order = rack_config.get("strata", {}).get("order", [])
     if name not in strata_order:
         strata_order.append(name)
-        strata_order.sort(key=lambda x: int(re.match(r'L(\d+)', x).group(1)) if re.match(r'L(\d+)', x) else 999)
+        strata_order.sort(key=_stratum_sort_key)
         rack_config.setdefault("strata", {})["order"] = strata_order
 
     # Add to default_enabled
     default_enabled = rack_config.get("strata", {}).get("default_enabled", [])
     if name not in default_enabled:
         default_enabled.append(name)
-        default_enabled.sort(key=lambda x: int(re.match(r'L(\d+)', x).group(1)) if re.match(r'L(\d+)', x) else 999)
+        default_enabled.sort(key=_stratum_sort_key)
         rack_config["strata"]["default_enabled"] = default_enabled
 
     with open(rack_toml_path, "wb") as f:
@@ -2285,13 +2294,13 @@ def test_placeholder():
 
     print(f"Created stratum: {name}")
     print(f"  {stratum_dir}/")
-    print(f"  |-- STRATUM.toml")
-    print(f"  |-- cases/")
+    print("  |-- STRATUM.toml")
+    print("  |-- cases/")
     print(f"  |-- test_{name}_001_placeholder.py")
-    print(f"")
-    print(f"Updated rack.toml with new stratum")
-    print(f"")
-    print(f"Next steps:")
+    print("")
+    print("Updated rack.toml with new stratum")
+    print("")
+    print("Next steps:")
     print(f"  1. Edit {stratum_dir}/STRATUM.toml to add description and objectives")
     print(f"  2. Add subtests: rack new subtest {name} 002 your_test_name")
     print(f"  3. Run tests: rack run {name[:2]}")
@@ -2315,7 +2324,6 @@ def cmd_new_subtest(args):
         0 on success, 1 on error
     """
     import re
-    import tomli_w
 
     stratum = args.stratum
     seq = args.seq
@@ -2347,10 +2355,8 @@ def cmd_new_subtest(args):
     # Parse stratum prefix for L number
     match = re.match(r'^L(\d+)_(.+)$', stratum)
     if not match:
-        print(f"Error: Stratum name must match L{{n}}_{{name}} format")
+        print("Error: Stratum name must match L{n}_{name} format")
         return 1
-
-    level = match.group(1)
 
     # Normalize name to snake_case
     snake_name = name.lower().replace(" ", "_").replace("-", "_")
@@ -2428,13 +2434,13 @@ test_placeholder = "TODO: Add test descriptions"
     else:
         print(f"Warning: {stratum_toml_path} not found, skipping manifest update")
 
-    print(f"")
+    print("")
     print(f"Created subtest: {test_filename}")
     print(f"  Location: {test_path}")
-    print(f"")
-    print(f"Next steps:")
+    print("")
+    print("Next steps:")
     print(f"  1. Edit {test_filename} to add actual tests")
-    print(f"  2. Update STRATUM.toml with code_under_test, objectives, etc.")
+    print("  2. Update STRATUM.toml with code_under_test, objectives, etc.")
     print(f"  3. Run tests: rack run {stratum[:2]}")
 
     return 0
@@ -2454,6 +2460,47 @@ def _resolve_module_to_path(module: str) -> str:
         return ""
     # Convert dots to path separators and add .py extension
     return module.replace(".", "/") + ".py"
+
+
+def package_version(distribution: str) -> str:
+    """Return an installed package version or a clear fallback string."""
+    try:
+        return importlib_metadata.version(distribution)
+    except importlib_metadata.PackageNotFoundError:
+        return "not installed"
+
+
+def version_report() -> dict[str, str]:
+    """Return Rack and major runtime dependency versions."""
+    return {
+        "wn-rack": __version__,
+        "python": f"{platform.python_implementation()} {sys.version.split()[0]}",
+        "pytest": package_version("pytest"),
+        "pytest-json-report": package_version("pytest-json-report"),
+        "tomli-w": package_version("tomli-w"),
+    }
+
+
+def cmd_version(args) -> int:
+    """Print Rack and major runtime dependency versions."""
+    report = version_report()
+    if getattr(args, "format", "text") == "json":
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
+
+    print(f"wn-rack {report['wn-rack']}")
+    print(f"python {report['python']}")
+    print(f"pytest {report['pytest']}")
+    print(f"pytest-json-report {report['pytest-json-report']}")
+    print(f"tomli-w {report['tomli-w']}")
+    return 0
+
+
+def _stratum_sort_key(name: str) -> int:
+    match = re.match(r"L(\d+)", name)
+    if match:
+        return int(match.group(1))
+    return 999
 
 
 def generate_html_report(summary: dict) -> str:
@@ -2476,11 +2523,9 @@ def generate_html_report(summary: dict) -> str:
     s = summary.get("summary", {})
     total = s.get("subtests_total", 0)
     passed = s.get("subtests_passed", 0)
-    pass_rate = (passed / total * 100) if total > 0 else 0
     tests_passed = s.get("tests_passed", 0)
     tests_failed = s.get("tests_failed", 0)
     tests_skipped = s.get("tests_skipped", 0)
-    tests_total = tests_passed + tests_failed + tests_skipped
 
     # Load rack_output data
     rack_outputs = load_rack_outputs()
@@ -2562,9 +2607,8 @@ def generate_html_report(summary: dict) -> str:
             f'<span class="badge" style="background: #6c757d; margin-right: 8px;">{type_counts["undeclared"]} undeclared</span>'
         )
 
-    test_case_summary_html = ""
     if type_summary_items:
-        test_case_summary_html = f"""
+        f"""
     <div class="info-card" style="margin-bottom: 30px;">
         <h4>Test Case Types</h4>
         <p>{"".join(type_summary_items)}</p>
@@ -3143,7 +3187,7 @@ def _generate_stratum_section(stratum: str, summary: dict, rack_outputs: dict, s
             if stratum.startswith(stratum_prefix + "_"):
                 stratum_stale_count += 1
 
-    stale_badge = f' <span class="badge badge-stale">STALE</span>' if stratum_stale_count > 0 else ""
+    stale_badge = ' <span class="badge badge-stale">STALE</span>' if stratum_stale_count > 0 else ""
 
     # Stratum objectives
     objectives_html = ""
@@ -3536,7 +3580,7 @@ def _generate_metrics_summary(outputs: list[dict]) -> str:
     comparisons_html = ""
     if all_comparisons:
         passed_comps = sum(1 for c in all_comparisons if c.get("passed"))
-        failed_comps = sum(1 for c in all_comparisons if not c.get("passed"))
+        sum(1 for c in all_comparisons if not c.get("passed"))
         comparisons_html = f"""
         <div class="metric-item">
             <div class="metric-name">Comparisons</div>
@@ -3694,7 +3738,7 @@ def _generate_svg_gallery(outputs: list[dict], test_id: str) -> str:
 # Main
 # =============================================================================
 
-def main():
+def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(
         description="Rack Test Framework CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -3713,6 +3757,7 @@ Examples:
   rack new subtest L2 003 my_test     Create new subtest
         """
     )
+    parser.add_argument("--version", action="store_true", help="Print version information and exit")
 
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
@@ -3730,17 +3775,26 @@ Examples:
     run_parser.add_argument("--test", help="Run specific test name/expression within selected target(s)")
 
     # status command
-    status_parser = subparsers.add_parser("status", help="Show test status")
+    subparsers.add_parser("status", help="Show test status")
 
     # report command
-    report_parser = subparsers.add_parser("report", help="Generate HTML report")
+    subparsers.add_parser("report", help="Generate HTML report")
 
     # refresh command
-    refresh_parser = subparsers.add_parser("refresh", help="Refresh stratum JSON from pytest data (fix durations)")
+    subparsers.add_parser("refresh", help="Refresh stratum JSON from pytest data (fix durations)")
 
     # inventory command (RACK-041)
     inventory_parser = subparsers.add_parser("inventory", help="Show test case inventory")
     inventory_parser.add_argument("--orphans", action="store_true", help="Show only orphaned directories")
+
+    # version command
+    version_parser = subparsers.add_parser("version", help="Print version information")
+    version_parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format",
+    )
 
     # new command (with sub-subparsers for stratum and subtest)
     new_parser = subparsers.add_parser("new", help="Create new stratum or subtest")
@@ -3756,7 +3810,10 @@ Examples:
     new_subtest_parser.add_argument("seq", help="Sequence number (e.g., 003)")
     new_subtest_parser.add_argument("name", help="Subtest name (e.g., schdoc_roundtrip)")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+
+    if args.version:
+        return cmd_version(args)
 
     # Handle short stratum names (L0 -> L0_foundation), subtest IDs (L5_001),
     # and direct single-test syntax (L5_001::test_name).
@@ -3796,6 +3853,8 @@ Examples:
         return cmd_refresh(args)
     elif args.command == "inventory":
         return cmd_inventory(args)
+    elif args.command == "version":
+        return cmd_version(args)
     elif args.command == "new":
         if args.new_type == "stratum":
             return cmd_new_stratum(args)

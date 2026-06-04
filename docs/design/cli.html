@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Rack CLI Design</title>
+</head>
+<body data-design="cli">
+  <h1>Rack CLI</h1>
+
+  <section data-command="list">
+    <h2>list</h2>
+    <p>Lists configured strata or subtests, optionally filtered by concern.</p>
+  </section>
+
+  <section data-command="run">
+    <h2>run</h2>
+    <p>Runs selected strata, subtests, or individual pytest tests.</p>
+  </section>
+
+  <section data-command="status">
+    <h2>status</h2>
+    <p>Displays the current aggregated suite status from previous results.</p>
+  </section>
+
+  <section data-command="report">
+    <h2>report</h2>
+    <p>Regenerates the HTML report from existing JSON results.</p>
+  </section>
+
+  <section data-command="refresh">
+    <h2>refresh</h2>
+    <p>Rebuilds Rack stratum summaries from raw pytest JSON reports.</p>
+  </section>
+
+  <section data-command="inventory">
+    <h2>inventory</h2>
+    <p>Reports test-case inventory and orphaned case directories.</p>
+  </section>
+
+  <section data-command="new">
+    <h2>new</h2>
+    <p>Scaffolds new strata and subtests.</p>
+  </section>
+
+  <section data-command="version">
+    <h2>version</h2>
+    <p>Reports Rack, Python, pytest, pytest-json-report, and tomli-w versions.</p>
+  </section>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "schema_version": "2026.6.4",
+  "commands": [
+    { "name": "inventory", "design_doc": "docs/design/cli.html", "data_command": "inventory" },
+    { "name": "list", "design_doc": "docs/design/cli.html", "data_command": "list" },
+    { "name": "new", "design_doc": "docs/design/cli.html", "data_command": "new" },
+    { "name": "refresh", "design_doc": "docs/design/cli.html", "data_command": "refresh" },
+    { "name": "report", "design_doc": "docs/design/cli.html", "data_command": "report" },
+    { "name": "run", "design_doc": "docs/design/cli.html", "data_command": "run" },
+    { "name": "status", "design_doc": "docs/design/cli.html", "data_command": "status" },
+    { "name": "version", "design_doc": "docs/design/cli.html", "data_command": "version" }
+  ]
+}

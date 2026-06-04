@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/wavenumber-eng/wn-rack/docs/contracts/exceptions.schema.v0.json",
+  "title": "Rack standards exception registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["exceptions"],
+  "properties": {
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "rule", "scope", "rationale", "review"],
+        "properties": {
+          "id": { "type": "string" },
+          "rule": { "type": "string" },
+          "scope": { "type": "string" },
+          "rationale": { "type": "string" },
+          "review": { "type": "string" }
+        }
+      }
+    }
+  }
+}

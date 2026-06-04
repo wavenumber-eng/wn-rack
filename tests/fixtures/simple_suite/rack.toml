@@ -1,0 +1,8 @@
+[rack]
+name = "Fixture Suite"
+version = "1.0"
+description = "Minimal Rack fixture suite"
+
+[strata]
+order = ["L0_foundation"]
+default_enabled = ["L0_foundation"]

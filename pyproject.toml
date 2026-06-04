@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "wn-rack"
-version = "1.1.0"
+version = "2026.6.4"
 description = "Strata-based pytest orchestration, suite manifests, and HTML reporting."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -25,6 +25,27 @@ dependencies = [
     "tomli-w>=1.2.0",
 ]
 
+[project.optional-dependencies]
+test = [
+    "build>=1.2.0",
+    "pyright>=1.1.390",
+    "ruff>=0.8.0",
+    "twine>=5.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "build>=1.2.0",
+    "pyright>=1.1.390",
+    "ruff>=0.8.0",
+    "twine>=5.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/wavenumber-eng/wn-rack"
+Repository = "https://github.com/wavenumber-eng/wn-rack"
+Issues = "https://github.com/wavenumber-eng/wn-rack/issues"
+
 [project.scripts]
 rack = "rack.cli:main"
 
@@ -34,10 +55,51 @@ package = true
 [tool.hatch.build.targets.wheel]
 packages = ["src/rack"]
 
+[tool.hatch.version]
+path = "src/rack/_version.py"
+
 [tool.hatch.build.targets.sdist]
 include = [
+    "/AGENTS.md",
+    "/CHANGELOG.md",
+    "/CODE_OF_CONDUCT.md",
+    "/CONTRIBUTING.md",
     "/src",
     "/docs",
     "/README.md",
     "/LICENSE",
+    "/SECURITY.md",
+    "/tests",
+    "/pyproject.toml",
 ]
+exclude = [
+    "/docs/plans/**",
+    "/docs/research/**",
+    "/tests/**/rack_results/**",
+    "/tests/**/__pycache__/**",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+
+[tool.pyright]
+include = [
+    "src/rack",
+    "tests/L0_public_cli",
+    "tests/L1_self_hosting",
+    "tests/L99_signoff",
+    "tests/support_scripts",
+]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+reportMissingTypeStubs = false
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

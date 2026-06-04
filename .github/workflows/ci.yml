@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Sync
+        run: uv sync --all-extras
+      - name: Run Rack signoff
+        run: uv run rack run --all
+      - name: Build package
+        run: uv run python -m build
+      - name: Check package
+        run: uv run twine check dist/*
+      - name: Installed wheel smoke test
+        shell: pwsh
+        run: |
+          $wheel = Get-ChildItem dist -Filter "*.whl" | Select-Object -First 1
+          uv tool install --force $wheel.FullName
+          rack --version
+          rack version

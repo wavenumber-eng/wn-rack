@@ -207,6 +207,26 @@ And appends a matching `[[subtests]]` block to `STRATUM.toml`.
 - `seq` is usually a three-digit string such as `003`
 - `name` is normalized to snake_case for the file name
 
+## `rack version`
+
+Print package and major runtime dependency versions.
+
+Examples:
+
+```bash
+rack --version
+rack version
+rack version --format json
+```
+
+Reported versions:
+
+- `wn-rack`
+- Python
+- pytest
+- pytest-json-report
+- tomli-w
+
 ## Exit Codes
 
 Current behavior:

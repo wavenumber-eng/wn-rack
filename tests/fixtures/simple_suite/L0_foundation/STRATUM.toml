@@ -1,0 +1,21 @@
+name = "Foundation"
+order = 0
+description = "Fixture smoke stratum"
+enabled = true
+concerns = ["fixture"]
+
+objectives = ["Verify Rack can execute a fixture suite"]
+
+[[subtests]]
+id = "L0_001"
+file = "test_L0_001_smoke.py"
+name = "Smoke"
+description = "Simple passing pytest file"
+concerns = ["fixture"]
+test_case_type = "synthetic"
+
+[subtests.code_under_test]
+module = "rack.cli"
+
+[subtests.test_functions]
+test_smoke = "Basic sanity check"

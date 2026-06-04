@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>wn-rack Architecture</title>
+</head>
+<body data-doc="architecture" data-package="rack">
+  <h1>Architecture</h1>
+  <p>
+    Rack is a test orchestration layer around ordinary pytest suites. It adds
+    ordered strata, manifest metadata, durable JSON results, source staleness
+    tracking, inventory reporting, and HTML reports.
+  </p>
+
+  <h2>Current Boundary</h2>
+  <p>
+    <code>src/rack/cli.py</code> is a documented legacy monolith. New behavior
+    should move toward command, configuration, runner, reporting, and public API
+    modules after tests cover the current behavior.
+  </p>
+
+  <h2>Public API</h2>
+  <ul>
+    <li data-interface="rack.RackOutput">Structured test output collector.</li>
+    <li data-interface="rack.get_current_output">Returns current test output.</li>
+    <li data-interface="rack.set_current_output">Sets current test output.</li>
+    <li data-interface="rack.clear_current_output">Clears current test output.</li>
+  </ul>
+</body>
+</html>

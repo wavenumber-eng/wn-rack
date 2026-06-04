@@ -1,0 +1,49 @@
+[rack]
+name = "wn-rack Public Tests"
+version = "1.0"
+description = "Self-hosted Rack suite for the wn-rack package"
+default_lane = "fast"
+
+[strata]
+order = [
+    "L0_public_cli",
+    "L1_self_hosting",
+    "L99_signoff",
+]
+default_enabled = [
+    "L0_public_cli",
+    "L1_self_hosting",
+    "L99_signoff",
+]
+
+[concerns.cli]
+description = "Installed CLI behavior and command registration"
+
+[concerns.self_hosting]
+description = "Rack running a Rack suite"
+
+[concerns.docs]
+description = "Design documentation and contracts"
+
+[concerns.release]
+description = "Release metadata and packaging"
+
+[concerns.signoff]
+description = "Final quality gates"
+
+[lanes.fast]
+description = "Fast development lane"
+
+[lanes.full]
+description = "Full self-hosted package lane"
+
+[lanes.strict]
+description = "Release signoff lane"
+
+[dependencies]
+python_packages = [
+    "pytest",
+    "pytest-json-report",
+    "pyright",
+    "ruff",
+]

@@ -1,0 +1,56 @@
+name = "Release Signoff"
+order = 99
+description = "Release metadata, docs/contracts, repository hygiene, and quality gates"
+enabled = true
+concerns = ["release", "docs", "contracts", "signoff"]
+
+objectives = [
+    "Release metadata matches the date-based version contract",
+    "Public commands and interfaces have docs and manifests",
+    "Repo hygiene files and lockfile policy are enforced",
+    "Legacy exceptions are documented and ratcheted",
+    "Quality tools pass the current adoption baseline",
+]
+
+[dependencies]
+strata = ["L0_public_cli", "L1_self_hosting"]
+
+[[subtests]]
+id = "L99_001"
+file = "test_L99_001_release_metadata.py"
+name = "Release Metadata"
+description = "Validate version, changelog, release notes, and workflow"
+concerns = ["release"]
+test_case_type = "audit_meta"
+
+[[subtests]]
+id = "L99_002"
+file = "test_L99_002_docs_contracts.py"
+name = "Docs And Contracts"
+description = "Validate command and interface design coverage"
+concerns = ["docs", "contracts"]
+test_case_type = "audit_meta"
+
+[[subtests]]
+id = "L99_003"
+file = "test_L99_003_quality_tools.py"
+name = "Quality Tools"
+description = "Run Ruff, Pyright, and uv lock freshness checks"
+concerns = ["signoff"]
+test_case_type = "audit_meta"
+
+[[subtests]]
+id = "L99_004"
+file = "test_L99_004_repo_hygiene.py"
+name = "Repository Hygiene"
+description = "Validate required files, ignored secrets, and sdist policy"
+concerns = ["release", "signoff"]
+test_case_type = "audit_meta"
+
+[[subtests]]
+id = "L99_005"
+file = "test_L99_005_python_signoff.py"
+name = "Python Signoff"
+description = "Run AST-based legacy ratchet checks"
+concerns = ["signoff"]
+test_case_type = "audit_meta"

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Rack Public API Design</title>
+</head>
+<body data-design="public-api">
+  <h1>Public API</h1>
+
+  <section data-interface="rack.RackOutput">
+    <h2>RackOutput</h2>
+    <p>Collects metrics, timings, comparisons, attachments, SVGs, tags, and status.</p>
+  </section>
+
+  <section data-interface="rack.get_current_output">
+    <h2>get_current_output</h2>
+    <p>Returns the thread-local output collector for the current test.</p>
+  </section>
+
+  <section data-interface="rack.set_current_output">
+    <h2>set_current_output</h2>
+    <p>Sets the thread-local output collector for the current test.</p>
+  </section>
+
+  <section data-interface="rack.clear_current_output">
+    <h2>clear_current_output</h2>
+    <p>Clears the thread-local output collector.</p>
+  </section>
+</body>
+</html>

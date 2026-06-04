@@ -1,0 +1,25 @@
+{
+  "schema_version": "2026.6.4",
+  "interfaces": [
+    {
+      "name": "rack.RackOutput",
+      "design_doc": "docs/design/public-api.html",
+      "data_interface": "rack.RackOutput"
+    },
+    {
+      "name": "rack.get_current_output",
+      "design_doc": "docs/design/public-api.html",
+      "data_interface": "rack.get_current_output"
+    },
+    {
+      "name": "rack.set_current_output",
+      "design_doc": "docs/design/public-api.html",
+      "data_interface": "rack.set_current_output"
+    },
+    {
+      "name": "rack.clear_current_output",
+      "design_doc": "docs/design/public-api.html",
+      "data_interface": "rack.clear_current_output"
+    }
+  ]
+}

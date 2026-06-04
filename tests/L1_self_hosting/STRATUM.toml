@@ -1,0 +1,25 @@
+name = "Self Hosting"
+order = 1
+description = "Rack runs a small Rack suite and writes results"
+enabled = true
+concerns = ["self_hosting"]
+
+objectives = [
+    "Rack can run a minimal suite from an explicit RACK_TESTS_DIR",
+    "Rack writes summary and HTML report artifacts",
+]
+
+[dependencies]
+strata = ["L0_public_cli"]
+
+[[subtests]]
+id = "L1_001"
+file = "test_L1_001_run_fixture_suite.py"
+name = "Run Fixture Suite"
+description = "Run a package-local fixture suite through the Rack CLI"
+concerns = ["self_hosting"]
+test_case_type = "synthetic"
+test_cases = "../fixtures/simple_suite"
+
+[subtests.code_under_test]
+module = "rack.cli"

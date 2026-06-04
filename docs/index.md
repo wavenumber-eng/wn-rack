@@ -10,6 +10,12 @@ This package has four main reference documents:
   Describes how Rack is structured internally and how it executes a suite.
 - [Python API](./python-api.md)
   Covers `RackOutput` and the small runtime API exposed to test suites.
+- [Setup](./setup.html)
+  Captures the current uv, signoff, and release workflow.
+- [HTML CLI Design](./design/cli.html)
+  Provides machine-checkable public command design anchors.
+- [HTML Public API Design](./design/public-api.html)
+  Provides machine-checkable public interface design anchors.
 
 For a first read, start with:
 
