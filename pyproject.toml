@@ -50,6 +50,9 @@ Issues = "https://github.com/wavenumber-eng/wn-rack/issues"
 rack = "rack.cli:main"
 
 [tool.uv]
+# Copy instead of hardlink: venv may live on a different volume than the uv
+# cache, where hardlinking fails (os error 396).
+link-mode = "copy"
 package = true
 
 [tool.hatch.build.targets.wheel]
