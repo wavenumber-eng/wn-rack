@@ -8,14 +8,13 @@ version = "2026.6.4"
 description = "Strata-based pytest orchestration, suite manifests, and HTML reporting."
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 keywords = ["pytest", "testing", "reporting", "toml", "traceability"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Testing",
 ]
@@ -50,6 +49,9 @@ Issues = "https://github.com/wavenumber-eng/wn-rack/issues"
 rack = "rack.cli:main"
 
 [tool.uv]
+# Copy instead of hardlink: venv may live on a different volume than the uv
+# cache, where hardlinking fails (os error 396).
+link-mode = "copy"
 package = true
 
 [tool.hatch.build.targets.wheel]
@@ -94,7 +96,7 @@ include = [
     "tests/L99_signoff",
     "tests/support_scripts",
 ]
-pythonVersion = "3.11"
+pythonVersion = "3.12"
 typeCheckingMode = "basic"
 reportMissingTypeStubs = false
 
