@@ -40,6 +40,11 @@ Rack creates a progress directory for each run:
 rack_results/progress/
 ```
 
+`rack_results/progress/` is generated runtime state. It must not be committed
+to version control. Rack suites should ignore `rack_results/` or
+`**/rack_results/` in `.gitignore`, and Rack should keep progress output under
+`rack_results/` so normal repository hygiene excludes it automatically.
+
 Rack exposes these environment variables to pytest and any native child tools
 launched by the suite:
 
@@ -121,8 +126,16 @@ line to stderr and flush immediately:
 RACK_PROGRESS	test_L4_125_schdoc_cpp_no_opaque_test_tree	137/1047	SchDoc	altium/.../foo.SchDoc	elapsed=52.3s
 ```
 
-Console output is advisory. Pytest and CTest may capture it, and some runners
-only display it on failure. The JSONL file remains authoritative.
+Console output is advisory. Pytest and CTest may capture direct child-process
+stderr, and some runners only display it on failure. The JSONL file remains
+authoritative.
+
+For agents and humans monitoring a long `rack run`, Rack should provide a
+runner-level stream mode that tails the progress JSONL file and emits live
+status lines from the Rack process itself. This avoids relying on pytest or
+CTest capture behavior and makes progress visible to the process supervisor.
+The first implementation may print these lines to stderr; a later CLI option
+can choose stdout or stderr explicitly if needed.
 
 ## Throttling
 
@@ -190,13 +203,16 @@ Initial Rack implementation should be conservative:
   progress by default.
 - Rack should print the progress JSONL path at the start of a run when progress
   is enabled.
-- Live tailing is optional for the first implementation. Writing durable JSONL
-  and enabling helpers is enough to unblock long tests.
+- Rack should offer a live stream mode suitable for agents and terminal users.
+  The stream should be emitted by Rack itself from the JSONL file, not only by
+  pytest child output.
 
 Future CLI behavior can include:
 
 - `rack progress` to show the latest progress file
 - `rack run --progress=tail` to print live progress updates
+- `rack run --progress=stderr` or `rack run --progress=stdout` if callers need
+  a stable stream destination
 - HTML report summaries showing elapsed time, final counts, and slowest DUTs
 
 ## Manifest Metadata
