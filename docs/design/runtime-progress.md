@@ -130,12 +130,12 @@ Console output is advisory. Pytest and CTest may capture direct child-process
 stderr, and some runners only display it on failure. The JSONL file remains
 authoritative.
 
-For agents and humans monitoring a long `rack run`, Rack should provide a
-runner-level stream mode that tails the progress JSONL file and emits live
-status lines from the Rack process itself. This avoids relying on pytest or
-CTest capture behavior and makes progress visible to the process supervisor.
-The first implementation may print these lines to stderr; a later CLI option
-can choose stdout or stderr explicitly if needed.
+For agents and humans monitoring a long `rack run`, Rack tails the progress
+JSONL file and emits live status lines from the Rack process itself when
+`--progress` or manifest-enabled progress is active. This avoids relying on
+pytest or CTest capture behavior and makes progress visible to the process
+supervisor. The first implementation prints these lines to stderr; a later CLI
+option can choose stdout or stderr explicitly if needed.
 
 ## Throttling
 
@@ -230,14 +230,12 @@ Initial Rack implementation should be conservative:
   progress by default.
 - Rack should print the progress JSONL path at the start of a run when progress
   is enabled.
-- Rack should offer a live stream mode suitable for agents and terminal users.
-  The stream should be emitted by Rack itself from the JSONL file, not only by
-  pytest child output.
+- Rack tails the JSONL progress file and emits live status lines from the Rack
+  process itself, not only from pytest child output.
 
 Future CLI behavior can include:
 
 - `rack progress` to show the latest progress file
-- `rack run --progress=tail` to print live progress updates
 - `rack run --progress=stderr` or `rack run --progress=stdout` if callers need
   a stable stream destination
 - HTML report summaries showing elapsed time, final counts, and slowest DUTs

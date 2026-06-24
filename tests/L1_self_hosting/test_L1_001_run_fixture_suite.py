@@ -31,6 +31,8 @@ def test_rack_runs_fixture_suite_and_writes_results() -> None:
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
+    assert "RACK_PROGRESS\ttest_L0_001_smoke" in result.stderr
+
     summary_path = suite / "rack_results" / "summary.json"
     report_path = suite / "rack_results" / "report.html"
     assert summary_path.exists()

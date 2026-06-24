@@ -6,6 +6,8 @@
   export for long-running tests.
 - Add `rack run --progress` / `--no-progress` and manifest-driven progress
   enablement through `progress = true` or long runtime profiles.
+- Tail progress JSONL from the Rack runner and print live `RACK_PROGRESS`
+  status lines to stderr.
 - Add Rack-owned C++ progress helper scaffolding through
   `rack progress helper cpp --output ...`.
 - Document the runtime progress JSONL contract and generated

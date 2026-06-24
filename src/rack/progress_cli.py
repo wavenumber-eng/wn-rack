@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -66,6 +70,76 @@ def cmd_progress(args: Any) -> int:
     target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
     print(f"Wrote C++ progress helper: {target}")
     return 0
+
+
+def run_command_with_progress_tail(
+    command: str,
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    progress_file: Path | None,
+    enabled: bool,
+) -> subprocess.CompletedProcess[Any]:
+    if not enabled or progress_file is None:
+        return subprocess.run(command, shell=True, cwd=cwd, env=env)
+
+    tailer = ProgressTailer(progress_file)
+    process = subprocess.Popen(command, shell=True, cwd=cwd, env=env)
+    while process.poll() is None:
+        tailer.drain()
+        time.sleep(0.2)
+
+    returncode = process.wait()
+    tailer.drain()
+    return subprocess.CompletedProcess(command, returncode)
+
+
+class ProgressTailer:
+    def __init__(self, progress_file: Path) -> None:
+        self.progress_file = progress_file
+        self.offset = 0
+
+    def drain(self) -> None:
+        if not self.progress_file.exists():
+            return
+
+        with self.progress_file.open("r", encoding="utf-8") as handle:
+            handle.seek(self.offset)
+            lines = handle.readlines()
+            self.offset = handle.tell()
+
+        for line in lines:
+            self._emit_line(line)
+
+    def _emit_line(self, line: str) -> None:
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            return
+
+        print(format_progress_event(event), file=sys.stderr, flush=True)
+
+
+def format_progress_event(event: dict[str, Any]) -> str:
+    done = event.get("done")
+    total = event.get("total")
+    count = f"{done}/{total}" if done is not None and total is not None else "-"
+    dut_kind = str(event.get("dut_kind", "-"))
+    dut_id = str(event.get("dut_id", "-"))
+    elapsed = float(event.get("elapsed_s", 0.0))
+    parts = [
+        "RACK_PROGRESS",
+        str(event.get("test_id", "-")),
+        count,
+        dut_kind,
+        dut_id,
+        f"elapsed={elapsed:.1f}s",
+        str(event.get("event", "-")),
+    ]
+    message = event.get("message")
+    if message:
+        parts.append(str(message))
+    return "\t".join(parts)
 
 
 def _native_progress_helper_source(language: str) -> Path:

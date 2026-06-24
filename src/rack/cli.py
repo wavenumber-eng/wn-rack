@@ -61,7 +61,7 @@ from typing import Any
 
 from rack._version import __version__
 from rack.progress import build_progress_environment, make_run_id
-from rack.progress_cli import add_progress_subparser, cmd_progress, subtests_request_progress
+from rack.progress_cli import add_progress_subparser, cmd_progress, run_command_with_progress_tail, subtests_request_progress
 
 # =============================================================================
 # Configuration
@@ -1224,8 +1224,8 @@ def cmd_run(args):
         pytest_env["RACK_LANE"] = active_lane
         pytest_env["WN_RACK_LANE"] = active_lane
         pytest_env["WN_TEST_LANE"] = active_lane
-        pytest_env = build_progress_environment(pytest_env, progress_dir=RACK_PROGRESS_DIR, run_id=progress_run_id, enabled=stratum_progress_enabled, stderr=True, progress_file=progress_file if stratum_progress_enabled else None)
-        result = subprocess.run(cmd, shell=True, cwd=PROJECT_ROOT, env=pytest_env)
+        pytest_env = build_progress_environment(pytest_env, progress_dir=RACK_PROGRESS_DIR, run_id=progress_run_id, enabled=stratum_progress_enabled, stderr=False, progress_file=progress_file if stratum_progress_enabled else None)
+        result = run_command_with_progress_tail(cmd, cwd=PROJECT_ROOT, env=pytest_env, progress_file=progress_file, enabled=stratum_progress_enabled)
 
         # Parse results
         if json_report.exists():
