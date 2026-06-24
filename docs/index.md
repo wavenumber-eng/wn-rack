@@ -16,6 +16,8 @@ This package has four main reference documents:
   Provides machine-checkable public command design anchors.
 - [HTML Public API Design](./design/public-api.html)
   Provides machine-checkable public interface design anchors.
+- [Runtime Progress Reporting Design](./design/runtime-progress.md)
+  Defines the draft JSONL and environment contract for long-running tests.
 
 For a first read, start with:
 
