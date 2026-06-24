@@ -60,6 +60,8 @@ from pathlib import Path
 from typing import Any
 
 from rack._version import __version__
+from rack.progress import build_progress_environment, make_run_id
+from rack.progress_cli import add_progress_subparser, cmd_progress, subtests_request_progress
 
 # =============================================================================
 # Configuration
@@ -111,6 +113,7 @@ TESTS_DIR = discover_tests_dir()
 RACK_CONFIG = TESTS_DIR / "rack.toml"
 RESULTS_DIR = TESTS_DIR / "rack_results"
 RACK_OUTPUT_DIR = RESULTS_DIR / "output"
+RACK_PROGRESS_DIR = RESULTS_DIR / "progress"
 SOURCE_HASHES_FILE = RESULTS_DIR / "source_hashes.json"
 PROJECT_ROOT = discover_project_root(TESTS_DIR)
 
@@ -865,6 +868,8 @@ def load_stratum_manifest(stratum: str) -> dict:
                 "approach": subtest.get("approach", {}),
                 "test_functions": subtest.get("test_functions", {}),
                 "bug_reference": subtest.get("bug_reference", None),
+                "progress": subtest.get("progress", None),
+                "runtime_profile": subtest.get("runtime_profile", ""),
                 "test_cases": subtest.get("test_cases", ""),  # RACK-040
                 "test_case_type": subtest.get("test_case_type", ""),  # RACK-040
             }
@@ -1048,6 +1053,12 @@ def cmd_run(args):
     subtest_filter = getattr(args, "subtest_filter", None)
     test_filter = getattr(args, "test_filter", None) or getattr(args, "test", None)
     active_lane = resolve_active_lane(args)
+    progress_requested = bool(getattr(args, "progress", False))
+    progress_disabled = bool(getattr(args, "no_progress", False))
+
+    if progress_requested and progress_disabled:
+        print("Cannot use --progress and --no-progress together.")
+        return 1
 
     # Determine which strata to run
     if args.stratum:
@@ -1094,6 +1105,8 @@ def cmd_run(args):
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     (RESULTS_DIR / "subtests").mkdir(exist_ok=True)
     (RESULTS_DIR / "strata").mkdir(exist_ok=True)
+    progress_run_id = make_run_id()
+    progress_file = RACK_PROGRESS_DIR / f"{progress_run_id}.jsonl"
 
     # RACK-039: Load existing results for amalgamation
     summary_json = RESULTS_DIR / "summary.json"
@@ -1199,10 +1212,19 @@ def cmd_run(args):
             f'--json-report --json-report-file="{json_report}"{extra_args}'
         )
         print(f"  Running: pytest {stratum_dir.name} ({len(pytest_targets)} target(s))")
+        stratum_progress_enabled = not progress_disabled and (
+            progress_requested
+            or subtests_request_progress(load_stratum_config(stratum), selected_subtests)
+        )
+        if stratum_progress_enabled:
+            RACK_PROGRESS_DIR.mkdir(parents=True, exist_ok=True)
+            print(f"  Progress: {progress_file}")
+
         pytest_env = os.environ.copy()
         pytest_env["RACK_LANE"] = active_lane
         pytest_env["WN_RACK_LANE"] = active_lane
         pytest_env["WN_TEST_LANE"] = active_lane
+        pytest_env = build_progress_environment(pytest_env, progress_dir=RACK_PROGRESS_DIR, run_id=progress_run_id, enabled=stratum_progress_enabled, stderr=True, progress_file=progress_file if stratum_progress_enabled else None)
         result = subprocess.run(cmd, shell=True, cwd=PROJECT_ROOT, env=pytest_env)
 
         # Parse results
@@ -3773,6 +3795,8 @@ Examples:
     run_parser.add_argument("--concern", help="Run only subtests tagged with concern (supports hierarchy, e.g., svg.text)")
     run_parser.add_argument("--lane", choices=["fast", "full", "strict"], help="Execution lane (defaults from rack.toml or fast)")
     run_parser.add_argument("--test", help="Run specific test name/expression within selected target(s)")
+    run_parser.add_argument("--progress", action="store_true", help="Enable Rack JSONL progress reporting")
+    run_parser.add_argument("--no-progress", action="store_true", help="Disable manifest-enabled progress reporting")
 
     # status command
     subparsers.add_parser("status", help="Show test status")
@@ -3786,6 +3810,8 @@ Examples:
     # inventory command (RACK-041)
     inventory_parser = subparsers.add_parser("inventory", help="Show test case inventory")
     inventory_parser.add_argument("--orphans", action="store_true", help="Show only orphaned directories")
+
+    add_progress_subparser(subparsers)
 
     # version command
     version_parser = subparsers.add_parser("version", help="Print version information")
@@ -3853,6 +3879,8 @@ Examples:
         return cmd_refresh(args)
     elif args.command == "inventory":
         return cmd_inventory(args)
+    elif args.command == "progress":
+        return cmd_progress(args)
     elif args.command == "version":
         return cmd_version(args)
     elif args.command == "new":
@@ -3870,4 +3898,3 @@ Examples:
 
 if __name__ == "__main__":
     sys.exit(main())
-

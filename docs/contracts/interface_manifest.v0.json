@@ -1,6 +1,11 @@
 {
-  "schema_version": "2026.6.4",
+  "schema_version": "2026.6.24",
   "interfaces": [
+    {
+      "name": "rack.ProgressReporter",
+      "design_doc": "docs/design/public-api.html",
+      "data_interface": "rack.ProgressReporter"
+    },
     {
       "name": "rack.RackOutput",
       "design_doc": "docs/design/public-api.html",

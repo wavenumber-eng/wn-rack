@@ -36,6 +36,7 @@ rack run L5_001
 rack run L5_001::test_name
 rack run --concern svg
 rack run L5 --test roundtrip
+rack run L4_125 --progress
 ```
 
 ### Selection Rules
@@ -49,6 +50,20 @@ rack run L5 --test roundtrip
   Rack finds the subtest file whose stem starts with that prefix
 - direct test token like `L5_001::test_name`:
   Rack runs one pytest function inside the resolved subtest file
+
+### Progress Reporting
+
+- `--progress` enables `RACK_PROGRESS=1` for pytest and child tools
+- `--no-progress` disables manifest-enabled progress for the current run
+- selected subtests can opt in with `progress = true`
+- subtests with `runtime_profile = "full_corpus"`, `"long"`, or `"slow"` also
+  enable progress by default
+
+When enabled, Rack writes progress events under:
+
+```text
+<tests_dir>/rack_results/progress/<run_id>.jsonl
+```
 
 ### Execution Model
 
@@ -143,6 +158,21 @@ Reports:
 - distribution by `test_case_type`
 - orphaned directories under `cases/`
 - missing `test_cases` / `test_case_type` metadata
+
+## `rack progress`
+
+Export Rack-owned progress helpers.
+
+Example:
+
+```bash
+rack progress helper cpp --output src/cpp/tests/common
+```
+
+This writes `rack_progress.hpp` to the output directory. Native projects can
+include this header to emit the same JSONL progress schema as Python suites
+without reimplementing environment handling, JSON escaping, stderr progress
+lines, or disabled no-op behavior.
 
 ## `rack new stratum`
 

@@ -617,7 +617,7 @@ wheels = [
 
 [[package]]
 name = "wn-rack"
-version = "2026.6.4"
+version = "2026.6.24"
 source = { editable = "." }
 dependencies = [
     { name = "pytest" },
