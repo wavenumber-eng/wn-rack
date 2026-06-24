@@ -171,8 +171,34 @@ This API is optional. Existing suites continue to work without it.
 
 ## Native Tool Contract
 
-C++ and other native tools do not need to link against Rack. They can write
-the JSONL contract directly using environment variables.
+C++ and other native tools do not need to link against Rack. They should use a
+small reusable emitter that implements the JSONL contract using environment
+variables.
+
+Rack should own reference emitters so each project does not reinvent JSON
+escaping, environment handling, stderr formatting, throttling, and disabled
+no-op behavior. For C++ the preferred shape is a dependency-free header-only
+emitter that projects can vendor or scaffold into their native test harness.
+The emitted wire format remains Rack-owned even when the helper source is
+copied into a native project.
+
+Required distribution shape:
+
+- Python suites import `rack.progress.ProgressReporter`.
+- Rack ships a canonical, dependency-free C++ reference header such as
+  `rack_progress.hpp`.
+- Native projects use that header directly when Rack is available at build
+  time, or use a generated copy when the native build must remain independent
+  of the Python environment.
+- Rack provides a CLI scaffolding command to write/update the native helper
+  from the canonical header, for example:
+
+  ```text
+  rack progress helper cpp --output src/cpp/tests/common
+  ```
+
+- The generated native file includes a schema/version marker so signoff can
+  detect stale helpers later.
 
 Recommended native helper responsibilities:
 
@@ -183,15 +209,16 @@ Recommended native helper responsibilities:
 - write stderr lines only when `RACK_PROGRESS_STDERR=1`
 - include a fallback no-op implementation when progress is disabled
 
-For Altium Monkey this helper should live near the native test harness first,
-for example:
+Projects may wrap the generic emitter with domain-specific helpers. For Altium
+Monkey that wrapper should live near the native test harness first, for
+example:
 
 ```text
 src/cpp/tests/common/altium_test_progress.h
 ```
 
-If more native projects adopt the same pattern, the helper can later move into
-`wn-dev-std`.
+The generic emitter should not know about SchDoc, PcbDoc, OrCAD, IPC, SVG, or
+any other suite-specific DUT type.
 
 ## Rack CLI Behavior
 
@@ -235,13 +262,17 @@ Explicit `progress = false` should win over inferred behavior.
 ## First Adoption Plan
 
 1. Implement `rack.progress.ProgressReporter` and environment setup in Rack.
-2. Add Rack self-tests for JSONL emission and disabled no-op behavior.
-3. Release Rack publicly to PyPI.
-4. Update the Altium Monkey private suite to use the released Rack version.
-5. Add an Altium C++ native progress helper.
-6. Promote `test_L4_125_schdoc_cpp_no_opaque_test_tree.cpp` as a long/full
+2. Add a Rack-owned reusable C++ emitter template/header and a CLI scaffold or
+   export command for native projects.
+3. Add Rack self-tests for JSONL emission, disabled no-op behavior, and helper
+   scaffolding.
+4. Release Rack publicly to PyPI.
+5. Update the Altium Monkey private suite to use the released Rack version.
+6. Add an Altium C++ native progress wrapper around the Rack-owned generic
+   emitter.
+7. Promote `test_L4_125_schdoc_cpp_no_opaque_test_tree.cpp` as a long/full
    corpus native lane using progress output.
-7. Backfill C++ strata as they are completed or touched during the C++ test
+8. Backfill C++ strata as they are completed or touched during the C++ test
    realignment plan.
 
 Python Altium tests do not need an immediate backfill. New or edited long
