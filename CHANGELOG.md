@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026.6.24
+
+- Add `rack.progress.ProgressReporter` and public `rack.ProgressReporter`
+  export for long-running tests.
+- Add `rack run --progress` / `--no-progress` and manifest-driven progress
+  enablement through `progress = true` or long runtime profiles.
+- Add Rack-owned C++ progress helper scaffolding through
+  `rack progress helper cpp --output ...`.
+- Document the runtime progress JSONL contract and generated
+  `rack_results/progress/` output location.
+
 ## 2026.6.4
 
 - Move `wn-rack` from the old semantic-style version line to date-based version

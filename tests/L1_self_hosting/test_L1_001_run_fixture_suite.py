@@ -22,7 +22,7 @@ def test_rack_runs_fixture_suite_and_writes_results() -> None:
     env["RACK_TESTS_DIR"] = str(suite)
 
     result = subprocess.run(
-        [sys.executable, "-m", "rack", "run", "--all"],
+        [sys.executable, "-m", "rack", "run", "--all", "--progress"],
         cwd=ROOT,
         env=env,
         check=False,
@@ -39,3 +39,13 @@ def test_rack_runs_fixture_suite_and_writes_results() -> None:
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["summary"]["subtests_passed"] == 1
     assert summary["summary"]["tests_passed"] == 1
+
+    progress_files = list((suite / "rack_results" / "progress").glob("*.jsonl"))
+    assert len(progress_files) == 1
+    progress_events = [
+        json.loads(line)
+        for line in progress_files[0].read_text(encoding="utf-8").splitlines()
+    ]
+    assert [event["event"] for event in progress_events] == ["start", "progress", "finish"]
+    assert progress_events[0]["schema"] == "rack.progress.v0"
+    assert progress_events[1]["dut_id"] == "smoke"

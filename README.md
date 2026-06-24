@@ -190,7 +190,7 @@ Rack now uses the Wavenumber Python baseline in legacy-adoption mode:
 - Rack self-hosted tests
 - Ruff and Pyright gates
 - HTML design docs and JSON contracts
-- date-based release version `2026.6.4`
+- date-based release version `2026.6.24`
 - GitHub Release published workflow with PyPI trusted publishing
 - documented legacy exceptions for the current monolithic CLI module
 

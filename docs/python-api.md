@@ -7,12 +7,42 @@ test execution.
 
 ```python
 from rack import (
+    ProgressReporter,
     RackOutput,
     clear_current_output,
     get_current_output,
     set_current_output,
 )
 ```
+
+## `ProgressReporter`
+
+`ProgressReporter` emits newline-delimited JSON progress events under
+`rack_results/progress/` when Rack enables progress for a run.
+
+Example:
+
+```python
+from rack import ProgressReporter
+
+
+def test_long_batch():
+    reporter = ProgressReporter(
+        test_id="test_L4_125_schdoc_cpp_no_opaque_test_tree",
+        total=1047,
+        dut_kind="SchDoc",
+    )
+    reporter.start(worker_count=8)
+    reporter.progress(
+        done=137,
+        dut_id="altium/common/example/input/foo.SchDoc",
+        metrics={"parse_s": 0.184},
+    )
+    reporter.finish(done=1047, failures=0)
+```
+
+The reporter is a no-op unless `RACK_PROGRESS=1` is present and Rack provides a
+progress file or progress directory/run ID through the runtime environment.
 
 ## `RackOutput`
 
