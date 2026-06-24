@@ -53,7 +53,8 @@ rack run L4_125 --progress
 
 ### Progress Reporting
 
-- `--progress` enables `RACK_PROGRESS=1` for pytest and child tools
+- `--progress` enables `RACK_PROGRESS=1` for pytest and child tools, then tails
+  the progress JSONL file from the Rack process
 - `--no-progress` disables manifest-enabled progress for the current run
 - selected subtests can opt in with `progress = true`
 - subtests with `runtime_profile = "full_corpus"`, `"long"`, or `"slow"` also
@@ -63,6 +64,12 @@ When enabled, Rack writes progress events under:
 
 ```text
 <tests_dir>/rack_results/progress/<run_id>.jsonl
+```
+
+Rack also prints live tab-delimited status lines to stderr:
+
+```text
+RACK_PROGRESS	test_id	done/total	DUT_KIND	dut_id	elapsed=1.2s	event
 ```
 
 ### Execution Model
