@@ -36,6 +36,25 @@ def test_audit_suite_detects_manifest_drift(tmp_path: Path) -> None:
     assert "missing_declared_subtest_file" in codes
 
 
+def test_audit_suite_detects_duplicate_strata_order(tmp_path: Path) -> None:
+    write_valid_suite(tmp_path)
+    write_file(
+        tmp_path / "rack.toml",
+        """
+        [rack]
+        name = "Demo"
+
+        [strata]
+        order = ["L0_foundation", "L0_foundation", "L99_signoff"]
+        """,
+    )
+
+    report = audit_suite(tmp_path, strict=True)
+
+    codes = {failure.code for failure in report.failures}
+    assert "duplicate_stratum" in codes
+
+
 def test_audit_suite_detects_duplicate_subtests_and_strict_metadata(
     tmp_path: Path,
 ) -> None:
@@ -91,6 +110,29 @@ def test_rack_audit_cli_returns_nonzero_and_json_for_failures(tmp_path: Path) ->
     assert payload["type"] == "rack.audit_report"
     assert payload["passed"] is False
     assert payload["failures"][0]["code"] == "missing_discovered_subtest"
+
+
+def test_rack_audit_cli_with_stratum_returns_json_for_invalid_rack_toml(
+    tmp_path: Path,
+) -> None:
+    write_file(tmp_path / "rack.toml", "[strata\n")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "rack", "audit", "L0", "--format", "json"],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "Traceback" not in result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["type"] == "rack.audit_report"
+    assert {failure["code"] for failure in payload["failures"]} >= {
+        "invalid_toml",
+        "unknown_stratum",
+    }
 
 
 def write_valid_suite(root: Path) -> None:

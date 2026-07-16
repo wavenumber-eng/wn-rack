@@ -86,6 +86,7 @@ def audit_suite(
         failures.append(
             _failure("missing_strata_order", "rack.toml must declare [strata].order", "rack.toml")
         )
+    _validate_strata_order(strata, failures)
 
     selected_strata = _selected_strata(target_stratum, strata, failures)
     if rack_config is not None:
@@ -148,6 +149,21 @@ def _rack_strata_order(config: Mapping[str, object]) -> tuple[str, ...]:
     if not isinstance(order, list):
         return ()
     return tuple(item.strip() for item in cast(list[object], order) if _non_empty_string(item))
+
+
+def _validate_strata_order(
+    strata: tuple[str, ...],
+    failures: list[AuditFailure],
+) -> None:
+    for duplicate in _duplicates(strata):
+        failures.append(
+            _failure(
+                "duplicate_stratum",
+                f"rack.toml has duplicate [strata].order entry: {duplicate}",
+                "rack.toml",
+                stratum=duplicate,
+            )
+        )
 
 
 def _selected_strata(
