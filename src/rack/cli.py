@@ -60,8 +60,14 @@ from pathlib import Path
 from typing import Any
 
 from rack._version import __version__
+from rack.audit import audit_suite
 from rack.progress import build_progress_environment, make_run_id
-from rack.progress_cli import add_progress_subparser, cmd_progress, run_command_with_progress_tail, subtests_request_progress
+from rack.progress_cli import (
+    add_progress_subparser,
+    cmd_progress,
+    run_command_with_progress_tail,
+    subtests_request_progress,
+)
 
 # =============================================================================
 # Configuration
@@ -1718,6 +1724,32 @@ def cmd_inventory(args):
         print("\nNo issues found.")
 
     return 0
+
+
+def cmd_audit(args):
+    """Run Rack manifest audit checks."""
+    signoff_strata = tuple(args.signoff_stratum or ())
+    report = audit_suite(
+        TESTS_DIR,
+        strict=args.strict,
+        signoff_strata=signoff_strata,
+        target_stratum=args.stratum,
+    )
+
+    if args.format == "json":
+        print(json.dumps(report.to_json_data(), indent=2))
+    else:
+        print("\n" + "=" * 60)
+        print("RACK AUDIT")
+        print("=" * 60)
+        if report.passed:
+            print("\nNo audit failures.")
+        else:
+            print(f"\n{len(report.failures)} audit failure(s):")
+            for failure in report.failures:
+                print(f"  [{failure.code}] {failure.message}")
+
+    return 0 if report.passed else 1
 
 
 def get_inventory_data() -> dict:
@@ -3757,10 +3789,11 @@ def _generate_svg_gallery(outputs: list[dict], test_id: str) -> str:
 
 
 # =============================================================================
-# Main
+# Parser And Main
 # =============================================================================
 
-def main(argv: list[str] | None = None):
+def build_parser() -> argparse.ArgumentParser:
+    """Build the Rack CLI argument parser."""
     parser = argparse.ArgumentParser(
         description="Rack Test Framework CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -3775,6 +3808,7 @@ Examples:
   rack list --concern svg.text  List only concern-matching subtests
   rack status           Show last run status
   rack report           Generate HTML report
+  rack audit            Audit manifest/test-suite drift
   rack new stratum L2_roundtrip       Create new stratum
   rack new subtest L2 003 my_test     Create new subtest
         """
@@ -3813,6 +3847,22 @@ Examples:
 
     add_progress_subparser(subparsers)
 
+    # audit command
+    audit_parser = subparsers.add_parser("audit", help="Audit Rack manifest/test-suite drift")
+    audit_parser.add_argument("stratum", nargs="?", help="Optional stratum to audit")
+    audit_parser.add_argument("--strict", action="store_true", help="Fail on missing inventory metadata")
+    audit_parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format",
+    )
+    audit_parser.add_argument(
+        "--signoff-stratum",
+        action="append",
+        help="Required signoff stratum; repeat for multiple strata",
+    )
+
     # version command
     version_parser = subparsers.add_parser("version", help="Print version information")
     version_parser.add_argument(
@@ -3836,6 +3886,11 @@ Examples:
     new_subtest_parser.add_argument("seq", help="Sequence number (e.g., 003)")
     new_subtest_parser.add_argument("name", help="Subtest name (e.g., schdoc_roundtrip)")
 
+    return parser
+
+
+def main(argv: list[str] | None = None):
+    parser = build_parser()
     args = parser.parse_args(argv)
 
     if args.version:
@@ -3843,7 +3898,7 @@ Examples:
 
     # Handle short stratum names (L0 -> L0_foundation), subtest IDs (L5_001),
     # and direct single-test syntax (L5_001::test_name).
-    if hasattr(args, 'stratum') and args.stratum:
+    if args.command != "audit" and hasattr(args, 'stratum') and args.stratum:
         strata = get_strata()
 
         if args.command == "run" and "::" in args.stratum:
@@ -3881,6 +3936,8 @@ Examples:
         return cmd_inventory(args)
     elif args.command == "progress":
         return cmd_progress(args)
+    elif args.command == "audit":
+        return cmd_audit(args)
     elif args.command == "version":
         return cmd_version(args)
     elif args.command == "new":
@@ -3889,7 +3946,7 @@ Examples:
         elif args.new_type == "subtest":
             return cmd_new_subtest(args)
         else:
-            new_parser.print_help()
+            parser.print_help()
             return 0
     else:
         parser.print_help()

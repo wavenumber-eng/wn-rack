@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/wavenumber-eng/wn-rack/docs/contracts/rack_audit_report.a0.schema.json",
+  "title": "Rack Audit Report A0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "version", "root", "strict", "signoff_strata", "passed", "failures"],
+  "properties": {
+    "type": { "const": "rack.audit_report" },
+    "version": { "const": "a0" },
+    "root": { "type": "string", "minLength": 1 },
+    "strict": { "type": "boolean" },
+    "signoff_strata": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "target_stratum": { "type": "string", "minLength": 1 },
+    "passed": { "type": "boolean" },
+    "failures": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/failure" }
+    }
+  },
+  "$defs": {
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "path"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "stratum": { "type": "string", "minLength": 1 },
+        "subtest": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

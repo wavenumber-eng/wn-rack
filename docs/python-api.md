@@ -9,6 +9,7 @@ test execution.
 from rack import (
     ProgressReporter,
     RackOutput,
+    audit_suite,
     clear_current_output,
     get_current_output,
     set_current_output,
@@ -43,6 +44,12 @@ def test_long_batch():
 
 The reporter is a no-op unless `RACK_PROGRESS=1` is present and Rack provides a
 progress file or progress directory/run ID through the runtime environment.
+
+## `audit_suite`
+
+`audit_suite(root, ...)` returns a structured Rack audit report for manifest
+and filesystem drift. It is the preferred integration surface for standards
+tools that need Rack audit results without parsing CLI prose.
 
 ## `RackOutput`
 

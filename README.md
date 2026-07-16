@@ -127,6 +127,7 @@ This supports both package-first usage and legacy wrapper scripts.
 - `rack report`
 - `rack refresh`
 - `rack inventory`
+- `rack audit`
 - `rack new stratum`
 - `rack new subtest`
 - `rack version`
@@ -142,6 +143,7 @@ rack run L5_001
 rack run L5_001::test_name
 rack list --concern svg.text
 rack inventory --orphans
+rack audit --format json
 ```
 
 ## Result Artifacts
@@ -156,11 +158,33 @@ Rack writes output under `<tests_dir>/rack_results/`:
 - `strata/<stratum>_pytest.json`
 - `output/*.json`
 
+## Audit
+
+`rack audit` checks Rack manifest drift without running tests. It exits nonzero
+when the suite manifest and filesystem disagree.
+
+It validates:
+
+- `rack.toml` strata entries against stratum directories
+- `STRATUM.toml` presence per stratum
+- discovered `test_*.py` files against `[[subtests]].file`
+- declared subtest files against the filesystem
+- duplicate subtest ids and files
+- conventional or configured signoff strata
+
+Use `rack audit --strict` to promote missing inventory metadata such as
+`test_cases` and `test_case_type` to failures.
+
+`rack audit --format json` emits the versioned `rack.audit_report` `a0`
+contract. The schema is committed at
+`docs/contracts/rack_audit_report.a0.schema.json`.
+
 ## Python API
 
 Rack exports:
 
 - `RackOutput`
+- `audit_suite`
 - `get_current_output()`
 - `set_current_output()`
 - `clear_current_output()`

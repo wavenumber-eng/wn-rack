@@ -1,6 +1,6 @@
 # Documentation
 
-This package has four main reference documents:
+This package has six main reference documents:
 
 - [Configuration Reference](./configuration.md)
   Explains `rack.toml`, `STRATUM.toml`, and the manifest fields Rack reads.
@@ -18,6 +18,8 @@ This package has four main reference documents:
   Provides machine-checkable public interface design anchors.
 - [Runtime Progress Reporting Design](./design/runtime-progress.md)
   Defines the draft JSONL and environment contract for long-running tests.
+- [Audit Report Schema](./contracts/rack_audit_report.a0.schema.json)
+  Defines the versioned JSON contract emitted by `rack audit --format json`.
 
 For a first read, start with:
 
