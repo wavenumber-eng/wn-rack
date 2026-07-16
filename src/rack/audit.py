@@ -148,7 +148,11 @@ def _rack_strata_order(config: Mapping[str, object]) -> tuple[str, ...]:
     order = cast(Mapping[str, object], strata_raw).get("order")
     if not isinstance(order, list):
         return ()
-    return tuple(item.strip() for item in cast(list[object], order) if _non_empty_string(item))
+    values: list[str] = []
+    for item in cast(list[object], order):
+        if isinstance(item, str) and item.strip():
+            values.append(item.strip())
+    return tuple(values)
 
 
 def _validate_strata_order(

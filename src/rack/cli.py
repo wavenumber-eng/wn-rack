@@ -40,7 +40,6 @@ Usage Examples:
     rack report           # Regenerate HTML report
 """
 
-import argparse
 import hashlib
 import html as html_module
 import importlib.metadata as importlib_metadata
@@ -60,10 +59,10 @@ from pathlib import Path
 from typing import Any
 
 from rack._version import __version__
-from rack.audit import audit_suite
+from rack.audit_cli import cmd_audit
+from rack.parser import build_parser
 from rack.progress import build_progress_environment, make_run_id
 from rack.progress_cli import (
-    add_progress_subparser,
     cmd_progress,
     run_command_with_progress_tail,
     subtests_request_progress,
@@ -1724,32 +1723,6 @@ def cmd_inventory(args):
         print("\nNo issues found.")
 
     return 0
-
-
-def cmd_audit(args):
-    """Run Rack manifest audit checks."""
-    signoff_strata = tuple(args.signoff_stratum or ())
-    report = audit_suite(
-        TESTS_DIR,
-        strict=args.strict,
-        signoff_strata=signoff_strata,
-        target_stratum=args.stratum,
-    )
-
-    if args.format == "json":
-        print(json.dumps(report.to_json_data(), indent=2))
-    else:
-        print("\n" + "=" * 60)
-        print("RACK AUDIT")
-        print("=" * 60)
-        if report.passed:
-            print("\nNo audit failures.")
-        else:
-            print(f"\n{len(report.failures)} audit failure(s):")
-            for failure in report.failures:
-                print(f"  [{failure.code}] {failure.message}")
-
-    return 0 if report.passed else 1
 
 
 def get_inventory_data() -> dict:
@@ -3788,107 +3761,6 @@ def _generate_svg_gallery(outputs: list[dict], test_id: str) -> str:
     '''
 
 
-# =============================================================================
-# Parser And Main
-# =============================================================================
-
-def build_parser() -> argparse.ArgumentParser:
-    """Build the Rack CLI argument parser."""
-    parser = argparse.ArgumentParser(
-        description="Rack Test Framework CLI",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  rack run              Run enabled strata
-  rack run L0           Run L0_foundation stratum
-  rack run --concern svg  Run only SVG-tagged subtests
-  rack run L8_010::test_name  Run one test from a subtest
-  rack list             List all strata
-  rack list L0          List subtests in L0
-  rack list --concern svg.text  List only concern-matching subtests
-  rack status           Show last run status
-  rack report           Generate HTML report
-  rack audit            Audit manifest/test-suite drift
-  rack new stratum L2_roundtrip       Create new stratum
-  rack new subtest L2 003 my_test     Create new subtest
-        """
-    )
-    parser.add_argument("--version", action="store_true", help="Print version information and exit")
-
-    subparsers = parser.add_subparsers(dest="command", help="Command to run")
-
-    # list command
-    list_parser = subparsers.add_parser("list", help="List strata and subtests")
-    list_parser.add_argument("stratum", nargs="?", help="Stratum to list (e.g., L0_foundation)")
-    list_parser.add_argument("--concern", help="Filter listed subtests by concern tag (e.g., svg.text)")
-
-    # run command
-    run_parser = subparsers.add_parser("run", help="Run tests")
-    run_parser.add_argument("stratum", nargs="?", help="Stratum or subtest to run (e.g., L5, L5_sch_tools, or L5_001)")
-    run_parser.add_argument("--all", action="store_true", help="Run all strata")
-    run_parser.add_argument("--concern", help="Run only subtests tagged with concern (supports hierarchy, e.g., svg.text)")
-    run_parser.add_argument("--lane", choices=["fast", "full", "strict"], help="Execution lane (defaults from rack.toml or fast)")
-    run_parser.add_argument("--test", help="Run specific test name/expression within selected target(s)")
-    run_parser.add_argument("--progress", action="store_true", help="Enable Rack JSONL progress reporting")
-    run_parser.add_argument("--no-progress", action="store_true", help="Disable manifest-enabled progress reporting")
-
-    # status command
-    subparsers.add_parser("status", help="Show test status")
-
-    # report command
-    subparsers.add_parser("report", help="Generate HTML report")
-
-    # refresh command
-    subparsers.add_parser("refresh", help="Refresh stratum JSON from pytest data (fix durations)")
-
-    # inventory command (RACK-041)
-    inventory_parser = subparsers.add_parser("inventory", help="Show test case inventory")
-    inventory_parser.add_argument("--orphans", action="store_true", help="Show only orphaned directories")
-
-    add_progress_subparser(subparsers)
-
-    # audit command
-    audit_parser = subparsers.add_parser("audit", help="Audit Rack manifest/test-suite drift")
-    audit_parser.add_argument("stratum", nargs="?", help="Optional stratum to audit")
-    audit_parser.add_argument("--strict", action="store_true", help="Fail on missing inventory metadata")
-    audit_parser.add_argument(
-        "--format",
-        choices=["text", "json"],
-        default="text",
-        help="Output format",
-    )
-    audit_parser.add_argument(
-        "--signoff-stratum",
-        action="append",
-        help="Required signoff stratum; repeat for multiple strata",
-    )
-
-    # version command
-    version_parser = subparsers.add_parser("version", help="Print version information")
-    version_parser.add_argument(
-        "--format",
-        choices=["text", "json"],
-        default="text",
-        help="Output format",
-    )
-
-    # new command (with sub-subparsers for stratum and subtest)
-    new_parser = subparsers.add_parser("new", help="Create new stratum or subtest")
-    new_subparsers = new_parser.add_subparsers(dest="new_type", help="What to create")
-
-    # new stratum
-    new_stratum_parser = new_subparsers.add_parser("stratum", help="Create new stratum")
-    new_stratum_parser.add_argument("name", help="Stratum name (e.g., L2_roundtrip)")
-
-    # new subtest
-    new_subtest_parser = new_subparsers.add_parser("subtest", help="Create new subtest")
-    new_subtest_parser.add_argument("stratum", help="Stratum name or prefix (e.g., L2 or L2_roundtrip)")
-    new_subtest_parser.add_argument("seq", help="Sequence number (e.g., 003)")
-    new_subtest_parser.add_argument("name", help="Subtest name (e.g., schdoc_roundtrip)")
-
-    return parser
-
-
 def main(argv: list[str] | None = None):
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -3937,7 +3809,7 @@ def main(argv: list[str] | None = None):
     elif args.command == "progress":
         return cmd_progress(args)
     elif args.command == "audit":
-        return cmd_audit(args)
+        return cmd_audit(args, TESTS_DIR)
     elif args.command == "version":
         return cmd_version(args)
     elif args.command == "new":

@@ -7,6 +7,6 @@ manifest_path = "docs/contracts/command_manifest.a0.json"
 
 [documentation.cli.inventory_provider]
 kind = "python_parser"
-module = "rack.cli"
+module = "rack.parser"
 function = "build_parser"
 max_depth = 1
