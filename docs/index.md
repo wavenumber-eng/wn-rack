@@ -1,19 +1,19 @@
 # Documentation
 
-This package has six main reference documents:
+This package has these reference documents:
 
 - [Configuration Reference](./configuration.md)
   Explains `rack.toml`, `STRATUM.toml`, and the manifest fields Rack reads.
 - [Command Reference](./commands.md)
   Documents the CLI commands and their current behavior.
+- [CLI Design](./design/cli.html)
+  Defines the accepted command intent used by dev-std `docs.cli` governance.
 - [Architecture](./architecture.md)
   Describes how Rack is structured internally and how it executes a suite.
 - [Python API](./python-api.md)
   Covers `RackOutput` and the small runtime API exposed to test suites.
 - [Setup](./setup.html)
   Captures the current uv, signoff, and release workflow.
-- [HTML CLI Design](./design/cli.html)
-  Provides machine-checkable public command design anchors.
 - [HTML Public API Design](./design/public-api.html)
   Provides machine-checkable public interface design anchors.
 - [Runtime Progress Reporting Design](./design/runtime-progress.md)

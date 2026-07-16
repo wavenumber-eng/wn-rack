@@ -200,23 +200,36 @@ See [Python API](./docs/python-api.md).
 - [Setup](./docs/setup.html)
 - [Configuration Reference](./docs/configuration.md)
 - [Command Reference](./docs/commands.md)
+- [CLI Design](./docs/design/cli.html)
 - [Architecture](./docs/architecture.md)
 - [Architecture Contract](./docs/architecture.html)
-- [CLI Design](./docs/design/cli.html)
 - [Public API Design](./docs/design/public-api.html)
 - [Python API](./docs/python-api.md)
 
-## Development Standard
+## Development Standards
 
-Rack now uses the Wavenumber Python baseline in legacy-adoption mode:
+Rack uses the Wavenumber Python baseline in legacy-adoption mode:
 
 - committed `uv.lock`
 - Rack self-hosted tests
 - Ruff and Pyright gates
 - HTML design docs and JSON contracts
-- date-based release version `2026.6.24`
+- date-based release version `2026.7.16`
 - GitHub Release published workflow with PyPI trusted publishing
 - documented legacy exceptions for the current monolithic CLI module
+
+Rack carries a `dev-std.toml` marker and a `docs.cli` command manifest so the
+public CLI surface can be audited. Until the matching `wn-dev-std` release is
+published, validate against a local dev-std checkout with Rack's `src` tree on
+`PYTHONPATH`:
+
+```powershell
+$env:PYTHONPATH = "$PWD\src"
+uv run --project <dev-std-checkout> dev-std audit . --scope docs.cli
+```
+
+After the dev-std release is published, use the normal project environment
+instead of the local source checkout.
 
 ## Current Behavior Notes
 
