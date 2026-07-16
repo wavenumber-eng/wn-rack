@@ -11,7 +11,7 @@ from jsonschema import Draft202012Validator
 from rack.audit import audit_suite
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_audit_suite_passes_synchronized_suite(tmp_path: Path) -> None:

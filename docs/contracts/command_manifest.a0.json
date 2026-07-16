@@ -75,13 +75,13 @@
       "verification_refs": [
         {
           "kind": "local_pytest",
-          "target": "tests/test_audit.py::test_rack_audit_cli_returns_nonzero_and_json_for_failures",
+          "target": "tests/L0_foundation/test_L0_001_audit.py::test_rack_audit_cli_returns_nonzero_and_json_for_failures",
           "coverage_mode": "command behavior",
           "rationale": "Covers failing CLI exit status and versioned JSON output for manifest drift."
         },
         {
           "kind": "local_pytest",
-          "target": "tests/test_audit.py::test_audit_json_report_matches_schema",
+          "target": "tests/L0_foundation/test_L0_001_audit.py::test_audit_json_report_matches_schema",
           "coverage_mode": "output contract",
           "rationale": "Validates the emitted audit report payload against the committed a0 schema."
         }

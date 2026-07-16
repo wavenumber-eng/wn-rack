@@ -25,6 +25,18 @@ test_cases = "../../docs/contracts/command_manifest.v0.json"
 module = "rack.cli"
 
 [[subtests]]
+id = "L0_003"
+file = "test_L0_003_audit.py"
+name = "Native Audit"
+description = "Validate Rack native audit API and CLI contract behavior"
+concerns = ["cli", "contracts"]
+test_case_type = "contract"
+test_cases = "../../docs/contracts/rack_audit_report.a0.schema.json"
+
+[subtests.code_under_test]
+module = "rack.audit"
+
+[[subtests]]
 id = "L0_002"
 file = "test_L0_002_public_api.py"
 name = "Public API"
