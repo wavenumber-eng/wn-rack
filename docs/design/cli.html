@@ -4,52 +4,114 @@
   <meta charset="utf-8">
   <title>Rack CLI Design</title>
 </head>
-<body data-design="cli">
-  <h1>Rack CLI</h1>
+<body data-design="cli" data-doc-status="accepted" data-doc-kind="cli-design">
+  <h1>Rack CLI Design</h1>
+  <p>
+    Rack's command line is the public control surface for suite discovery,
+    execution, reporting, manifest audit, runtime progress helper export, and
+    scaffolding. The parser is built by a deterministic helper so standards
+    tooling can inspect the visible command inventory without running an
+    arbitrary Rack command.
+  </p>
 
   <section data-command="list">
-    <h2>list</h2>
-    <p>Lists configured strata or subtests, optionally filtered by concern.</p>
+    <h2>rack list</h2>
+    <p>
+      Lists configured strata or subtests inside one stratum. Optional concern
+      filtering narrows the visible subtests without running tests. Unknown
+      strata fail with a nonzero exit code.
+    </p>
   </section>
 
   <section data-command="run">
-    <h2>run</h2>
-    <p>Runs selected strata, subtests, or individual pytest tests.</p>
+    <h2>rack run</h2>
+    <p>
+      Runs enabled strata by default, or one stratum, subtest, or pytest test
+      selector when a target is provided. It writes Rack result artifacts,
+      updates source-hash tracking for passing subtests, optionally tails Rack
+      progress events, and regenerates the HTML report. A failed selected suite
+      returns a nonzero exit code.
+    </p>
   </section>
 
   <section data-command="status">
-    <h2>status</h2>
-    <p>Displays the current aggregated suite status from previous results.</p>
+    <h2>rack status</h2>
+    <p>
+      Reads existing Rack result artifacts and reports the current aggregate
+      state, stale subtests, never-run strata, and suggested recovery command.
+      It does not execute tests or mutate suite manifests.
+    </p>
   </section>
 
   <section data-command="report">
-    <h2>report</h2>
-    <p>Regenerates the HTML report from existing JSON results.</p>
+    <h2>rack report</h2>
+    <p>
+      Rebuilds the human-readable HTML report from existing JSON artifacts. It
+      is a rendering command, not a test execution command, and it preserves the
+      current result state.
+    </p>
   </section>
 
   <section data-command="refresh">
-    <h2>refresh</h2>
-    <p>Rebuilds Rack stratum summaries from raw pytest JSON reports.</p>
+    <h2>rack refresh</h2>
+    <p>
+      Reconstructs stratum summaries from raw pytest JSON reports, then
+      refreshes the HTML report. It is intended for repair and migration cases
+      where raw pytest data exists but Rack aggregate summaries need rebuilding.
+    </p>
   </section>
 
   <section data-command="inventory">
-    <h2>inventory</h2>
-    <p>Reports test-case inventory and orphaned case directories.</p>
-  </section>
-
-  <section data-command="new">
-    <h2>new</h2>
-    <p>Scaffolds new strata and subtests.</p>
+    <h2>rack inventory</h2>
+    <p>
+      Reports declared test-case paths, test-case type distribution, and
+      orphaned case directories. Missing inventory metadata is informational in
+      this command; <code>rack audit --strict</code> is the failing enforcement
+      mode.
+    </p>
   </section>
 
   <section data-command="progress">
-    <h2>progress</h2>
-    <p>Exports Rack-owned runtime progress helpers for native projects.</p>
+    <h2>rack progress</h2>
+    <p>
+      Exports Rack-owned runtime progress helpers for native projects. The
+      command writes helper assets such as <code>rack_progress.hpp</code> so
+      native suites can emit the same JSONL progress schema as Python suites.
+    </p>
+  </section>
+
+  <section data-command="audit">
+    <h2>rack audit</h2>
+    <p>
+      Audits suite manifests against the filesystem without running tests. It
+      validates <code>rack.toml</code>, stratum directories,
+      <code>STRATUM.toml</code> files, discovered <code>test_*.py</code>
+      files, declared subtest files, duplicate strata, duplicate subtest ids and
+      files, and required signoff strata. <code>--strict</code> promotes
+      missing <code>test_cases</code> and <code>test_case_type</code> metadata
+      to failures. <code>--format json</code> emits the
+      <code>rack.audit_report</code> <code>a0</code> output contract.
+    </p>
+  </section>
+
+  <section data-command="new">
+    <h2>rack new</h2>
+    <p>
+      Creates Rack scaffolding for new strata and subtests. It updates the
+      suite manifest for strata and appends matching <code>[[subtests]]</code>
+      metadata for generated subtest files. The top-level command owns
+      scaffolding behavior; nested <code>stratum</code> and
+      <code>subtest</code> parser branches remain part of that public surface.
+    </p>
   </section>
 
   <section data-command="version">
-    <h2>version</h2>
-    <p>Reports Rack, Python, pytest, pytest-json-report, and tomli-w versions.</p>
+    <h2>rack version</h2>
+    <p>
+      Reports Rack, Python, pytest, pytest-json-report, and tomli-w versions in
+      text or JSON form. The root <code>--version</code> shortcut prints the
+      same version report.
+    </p>
   </section>
 </body>
 </html>

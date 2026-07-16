@@ -181,6 +181,35 @@ include this header to emit the same JSONL progress schema as Python suites
 without reimplementing environment handling, JSON escaping, stderr progress
 lines, or disabled no-op behavior.
 
+## `rack audit`
+
+Audit Rack manifest drift without running tests.
+
+Examples:
+
+```bash
+rack audit
+rack audit L0_foundation
+rack audit --strict
+rack audit --format json
+```
+
+Behavior:
+
+- exits `0` when the audited Rack suite passes
+- exits `1` when manifest drift or strict metadata failures are found
+- validates `rack.toml` strata against real stratum directories
+- requires each configured stratum to have `STRATUM.toml`
+- compares discovered `test_*.py` files with `[[subtests]].file`
+- rejects declared subtest files that do not exist
+- rejects duplicate subtest ids and duplicate declared files
+- requires the conventional `L99_signoff` stratum unless overridden with
+  `--signoff-stratum`
+- `--strict` also fails missing `test_cases` and `test_case_type`
+
+JSON output uses the versioned `rack.audit_report` `a0` contract. The schema is
+committed at `docs/contracts/rack_audit_report.a0.schema.json`.
+
 ## `rack new stratum`
 
 Create a new stratum scaffold.
@@ -270,5 +299,6 @@ Current behavior:
 
 - `rack run` returns `0` if all targeted strata pass, else `1`
 - `rack list` returns `1` for unknown stratum
+- `rack audit` returns `0` when the manifest audit passes, else `1`
 - `rack status` returns `0` even if failures or stale tests exist
 - scaffold commands return `1` on validation or filesystem errors

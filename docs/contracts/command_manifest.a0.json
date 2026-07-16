@@ -1,0 +1,116 @@
+{
+  "schema": "wn_dev_std.command_manifest.a0",
+  "commands": [
+    {
+      "path": ["list"],
+      "name": "list",
+      "status": "public",
+      "summary": "List configured strata and subtests.",
+      "design_doc": "docs/design/cli.html",
+      "data_command": "list",
+      "surface_ref": "rack.cli.list"
+    },
+    {
+      "path": ["run"],
+      "name": "run",
+      "status": "public",
+      "summary": "Run Rack strata, subtests, or individual pytest tests.",
+      "design_doc": "docs/design/cli.html",
+      "data_command": "run",
+      "surface_ref": "rack.cli.run"
+    },
+    {
+      "path": ["status"],
+      "name": "status",
+      "status": "public",
+      "summary": "Show aggregate status from the last Rack run.",
+      "design_doc": "docs/design/cli.html",
+      "data_command": "status",
+      "surface_ref": "rack.cli.status"
+    },
+    {
+      "path": ["report"],
+      "name": "report",
+      "status": "public",
+      "summary": "Regenerate the HTML report from existing Rack result artifacts.",
+      "design_doc": "docs/design/cli.html",
+      "data_command": "report",
+      "surface_ref": "rack.cli.report"
+    },
+    {
+      "path": ["refresh"],
+      "name": "refresh",
+      "status": "public",
+      "summary": "Refresh stratum JSON summaries from raw pytest JSON reports.",
+      "design_doc": "docs/design/cli.html",
+      "data_command": "refresh",
+      "surface_ref": "rack.cli.refresh"
+    },
+    {
+      "path": ["inventory"],
+      "name": "inventory",
+      "status": "public",
+      "summary": "Show declared test-case inventory and orphaned case directories.",
+      "design_doc": "docs/design/cli.html",
+      "data_command": "inventory",
+      "surface_ref": "rack.cli.inventory"
+    },
+    {
+      "path": ["progress"],
+      "name": "progress",
+      "status": "public",
+      "summary": "Export Rack-owned runtime progress helpers.",
+      "design_doc": "docs/design/cli.html",
+      "data_command": "progress",
+      "surface_ref": "rack.cli.progress"
+    },
+    {
+      "path": ["audit"],
+      "name": "audit",
+      "status": "public",
+      "summary": "Audit Rack manifest and filesystem drift without running tests.",
+      "design_doc": "docs/design/cli.html",
+      "data_command": "audit",
+      "surface_ref": "rack.cli.audit",
+      "verification_refs": [
+        {
+          "kind": "local_pytest",
+          "target": "tests/L0_public_cli/test_L0_003_audit.py::test_rack_audit_cli_returns_nonzero_and_json_for_failures",
+          "coverage_mode": "command behavior",
+          "rationale": "Covers failing CLI exit status and versioned JSON output for manifest drift."
+        },
+        {
+          "kind": "local_pytest",
+          "target": "tests/L0_public_cli/test_L0_003_audit.py::test_audit_json_report_matches_schema",
+          "coverage_mode": "output contract",
+          "rationale": "Validates the emitted audit report payload against the committed a0 schema."
+        }
+      ],
+      "output_contracts": [
+        {
+          "path": "docs/contracts/rack_audit_report.a0.schema.json",
+          "mode": "json_schema",
+          "rationale": "Defines the stable JSON payload emitted by rack audit --format json."
+        }
+      ]
+    },
+    {
+      "path": ["new"],
+      "name": "new",
+      "status": "public",
+      "summary": "Create new Rack strata or subtests.",
+      "design_doc": "docs/design/cli.html",
+      "data_command": "new",
+      "surface_ref": "rack.cli.new"
+    },
+    {
+      "path": ["version"],
+      "name": "version",
+      "status": "public",
+      "summary": "Print Rack and runtime dependency versions.",
+      "design_doc": "docs/design/cli.html",
+      "data_command": "version",
+      "surface_ref": "rack.cli.version"
+    }
+  ]
+}

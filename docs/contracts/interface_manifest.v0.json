@@ -1,6 +1,16 @@
 {
-  "schema_version": "2026.6.24",
+  "schema_version": "2026.7.16",
   "interfaces": [
+    {
+      "name": "rack.AuditFailure",
+      "design_doc": "docs/design/public-api.html",
+      "data_interface": "rack.AuditFailure"
+    },
+    {
+      "name": "rack.AuditReport",
+      "design_doc": "docs/design/public-api.html",
+      "data_interface": "rack.AuditReport"
+    },
     {
       "name": "rack.ProgressReporter",
       "design_doc": "docs/design/public-api.html",
@@ -20,6 +30,11 @@
       "name": "rack.set_current_output",
       "design_doc": "docs/design/public-api.html",
       "data_interface": "rack.set_current_output"
+    },
+    {
+      "name": "rack.audit_suite",
+      "design_doc": "docs/design/public-api.html",
+      "data_interface": "rack.audit_suite"
     },
     {
       "name": "rack.clear_current_output",

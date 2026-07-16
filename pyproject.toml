@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "wn-rack"
-version = "2026.6.24"
+version = "2026.7.16"
 description = "Strata-based pytest orchestration, suite manifests, and HTML reporting."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -27,6 +27,7 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "build>=1.2.0",
+    "jsonschema>=4.26.0",
     "pyright>=1.1.390",
     "ruff>=0.8.0",
     "twine>=5.0.0",
@@ -35,6 +36,7 @@ test = [
 [dependency-groups]
 dev = [
     "build>=1.2.0",
+    "jsonschema>=4.26.0",
     "pyright>=1.1.390",
     "ruff>=0.8.0",
     "twine>=5.0.0",
@@ -44,7 +46,6 @@ dev = [
 Homepage = "https://github.com/wavenumber-eng/wn-rack"
 Repository = "https://github.com/wavenumber-eng/wn-rack"
 Issues = "https://github.com/wavenumber-eng/wn-rack/issues"
-
 [project.scripts]
 rack = "rack.cli:main"
 
@@ -59,6 +60,9 @@ packages = ["src/rack"]
 
 [tool.hatch.version]
 path = "src/rack/_version.py"
+
+[tool.hatch.build.targets.wheel.force-include]
+"docs/contracts/rack_audit_report.a0.schema.json" = "rack/contracts/rack_audit_report.a0.schema.json"
 
 [tool.hatch.build.targets.sdist]
 include = [

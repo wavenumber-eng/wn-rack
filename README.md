@@ -127,6 +127,7 @@ This supports both package-first usage and legacy wrapper scripts.
 - `rack report`
 - `rack refresh`
 - `rack inventory`
+- `rack audit`
 - `rack new stratum`
 - `rack new subtest`
 - `rack version`
@@ -142,6 +143,7 @@ rack run L5_001
 rack run L5_001::test_name
 rack list --concern svg.text
 rack inventory --orphans
+rack audit --format json
 ```
 
 ## Result Artifacts
@@ -156,11 +158,33 @@ Rack writes output under `<tests_dir>/rack_results/`:
 - `strata/<stratum>_pytest.json`
 - `output/*.json`
 
+## Audit
+
+`rack audit` checks Rack manifest drift without running tests. It exits nonzero
+when the suite manifest and filesystem disagree.
+
+It validates:
+
+- `rack.toml` strata entries against stratum directories
+- `STRATUM.toml` presence per stratum
+- discovered `test_*.py` files against `[[subtests]].file`
+- declared subtest files against the filesystem
+- duplicate subtest ids and files
+- conventional or configured signoff strata
+
+Use `rack audit --strict` to promote missing inventory metadata such as
+`test_cases` and `test_case_type` to failures.
+
+`rack audit --format json` emits the versioned `rack.audit_report` `a0`
+contract. The schema is committed at
+`docs/contracts/rack_audit_report.a0.schema.json`.
+
 ## Python API
 
 Rack exports:
 
 - `RackOutput`
+- `audit_suite`
 - `get_current_output()`
 - `set_current_output()`
 - `clear_current_output()`
@@ -176,23 +200,36 @@ See [Python API](./docs/python-api.md).
 - [Setup](./docs/setup.html)
 - [Configuration Reference](./docs/configuration.md)
 - [Command Reference](./docs/commands.md)
+- [CLI Design](./docs/design/cli.html)
 - [Architecture](./docs/architecture.md)
 - [Architecture Contract](./docs/architecture.html)
-- [CLI Design](./docs/design/cli.html)
 - [Public API Design](./docs/design/public-api.html)
 - [Python API](./docs/python-api.md)
 
-## Development Standard
+## Development Standards
 
-Rack now uses the Wavenumber Python baseline in legacy-adoption mode:
+Rack uses the Wavenumber Python baseline in legacy-adoption mode:
 
 - committed `uv.lock`
 - Rack self-hosted tests
 - Ruff and Pyright gates
 - HTML design docs and JSON contracts
-- date-based release version `2026.6.24`
+- date-based release version `2026.7.16`
 - GitHub Release published workflow with PyPI trusted publishing
 - documented legacy exceptions for the current monolithic CLI module
+
+Rack carries a `dev-std.toml` marker and a `docs.cli` command manifest so the
+public CLI surface can be audited. Until the matching `wn-dev-std` release is
+published, validate against a local dev-std checkout with Rack's `src` tree on
+`PYTHONPATH`:
+
+```powershell
+$env:PYTHONPATH = "$PWD\src"
+uv run --project <dev-std-checkout> dev-std audit . --scope docs.cli
+```
+
+After the dev-std release is published, use the normal project environment
+instead of the local source checkout.
 
 ## Current Behavior Notes
 

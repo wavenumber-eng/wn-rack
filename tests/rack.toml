@@ -1,6 +1,6 @@
 [rack]
 name = "wn-rack Public Tests"
-version = "1.0"
+version = "2026.7.16"
 description = "Self-hosted Rack suite for the wn-rack package"
 default_lane = "fast"
 

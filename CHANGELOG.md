@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026.7.16
+
+- Add native `rack audit` for Rack manifest/filesystem drift without running
+  tests.
+- Add the versioned `rack.audit_report` `a0` JSON output contract and schema.
+- Export `audit_suite`, `AuditReport`, and `AuditFailure` for standards tools
+  that consume Rack audit results directly.
+- Dogfood latest dev-std CLI governance with an a0 command manifest and
+  deterministic parser inventory provider.
+- Harden audit release checks for invalid TOML with a stratum argument and
+  duplicate `[strata].order` entries.
+
 ## 2026.6.24
 
 - Add `rack.progress.ProgressReporter` and public `rack.ProgressReporter`

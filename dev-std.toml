@@ -1,0 +1,12 @@
+standard_version = "2026.7.15"
+profile = "python-package"
+enabled_scopes = ["docs.cli"]
+
+[documentation.cli]
+manifest_path = "docs/contracts/command_manifest.a0.json"
+
+[documentation.cli.inventory_provider]
+kind = "python_parser"
+module = "rack.parser"
+function = "build_parser"
+max_depth = 1

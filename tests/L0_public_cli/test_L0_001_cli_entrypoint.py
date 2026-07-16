@@ -21,7 +21,7 @@ def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
 def test_cli_global_version_reports_dependency_versions() -> None:
     result = run_cli("--version")
     assert result.returncode == 0
-    assert "wn-rack 2026.6.24" in result.stdout
+    assert "wn-rack 2026.7.16" in result.stdout
     assert "python " in result.stdout
     assert "pytest " in result.stdout
 
@@ -29,7 +29,7 @@ def test_cli_global_version_reports_dependency_versions() -> None:
 def test_cli_version_command_reports_same_version() -> None:
     result = run_cli("version")
     assert result.returncode == 0
-    assert "wn-rack 2026.6.24" in result.stdout
+    assert "wn-rack 2026.7.16" in result.stdout
 
 
 def test_cli_help_lists_public_commands() -> None:
@@ -37,6 +37,7 @@ def test_cli_help_lists_public_commands() -> None:
     assert result.returncode == 0
     for command in (
         "inventory",
+        "audit",
         "list",
         "new",
         "progress",
@@ -52,6 +53,7 @@ def test_cli_help_lists_public_commands() -> None:
 def test_cli_command_help_starts_for_public_commands() -> None:
     for command in (
         "inventory",
+        "audit",
         "list",
         "new",
         "progress",

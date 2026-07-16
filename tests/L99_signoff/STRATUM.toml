@@ -21,6 +21,7 @@ file = "test_L99_001_release_metadata.py"
 name = "Release Metadata"
 description = "Validate version, changelog, release notes, and workflow"
 concerns = ["release"]
+test_cases = "../../docs/releases/2026-07-16.md"
 test_case_type = "audit_meta"
 
 [[subtests]]
@@ -29,6 +30,7 @@ file = "test_L99_002_docs_contracts.py"
 name = "Docs And Contracts"
 description = "Validate command and interface design coverage"
 concerns = ["docs", "contracts"]
+test_cases = "../../docs/contracts"
 test_case_type = "audit_meta"
 
 [[subtests]]
@@ -37,6 +39,7 @@ file = "test_L99_003_quality_tools.py"
 name = "Quality Tools"
 description = "Run Ruff, Pyright, and uv lock freshness checks"
 concerns = ["signoff"]
+test_cases = "../../pyproject.toml"
 test_case_type = "audit_meta"
 
 [[subtests]]
@@ -45,6 +48,7 @@ file = "test_L99_004_repo_hygiene.py"
 name = "Repository Hygiene"
 description = "Validate required files, ignored secrets, and sdist policy"
 concerns = ["release", "signoff"]
+test_cases = "../../AGENTS.md"
 test_case_type = "audit_meta"
 
 [[subtests]]
@@ -53,4 +57,5 @@ file = "test_L99_005_python_signoff.py"
 name = "Python Signoff"
 description = "Run AST-based legacy ratchet checks"
 concerns = ["signoff"]
+test_cases = "../../src/rack/cli.py"
 test_case_type = "audit_meta"
