@@ -2618,7 +2618,7 @@ def generate_html_report(summary: dict) -> str:
 
     # Build test case type summary HTML
     type_badges = {
-        "reference": ("#4a9eff", "Real Altium files"),
+        "reference": ("#4a9eff", "Real files"),
         "synthetic": ("#ffc107", "Crafted scenarios"),
         "algorithmic": ("#28a745", "Pure logic"),
     }
@@ -3368,7 +3368,7 @@ def _generate_subtest_section(stratum: str, subtest: dict, manifest: dict, rack_
 
         # Format type with appropriate styling
         type_labels = {
-            "reference": ("reference", "#4a9eff", "Validated against real Altium files"),
+            "reference": ("reference", "#4a9eff", "Validated against real files"),
             "synthetic": ("synthetic", "#ffc107", "Crafted test scenarios"),
             "algorithmic": ("algorithmic", "#28a745", "Pure logic, no file I/O"),
         }
