@@ -11,7 +11,7 @@ import json
 import tomllib
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from rack.audit import audit_suite
@@ -105,8 +105,9 @@ def build_parity(
     """The versioned parity report for the given strata."""
     entries = collect_entries(tests_dir, strata)
     rows = latest_rows(results_dir, entries)
-    implementations = _implementation_order(entries)
     by_test = _rows_by_test(rows)
+    entries = _with_observed_case_counts(entries, by_test)
+    implementations = _implementation_order(entries)
     groups = [
         _group_summary(name, members, implementations, by_test)
         for name, members in _grouped(entries, group_by)
@@ -198,6 +199,18 @@ def _rows_from_result(path: Path) -> list[Row]:
     return rows
 
 
+def _with_observed_case_counts(
+    entries: Sequence[TestEntry], by_test: Mapping[str, Sequence[Row]]
+) -> list[TestEntry]:
+    """Count a catalog's cases from its latest rows; every row is recorded, skipped too."""
+    return [
+        replace(entry, case_count=len({row.case for row in by_test[entry.id]}))
+        if entry.case_count is None and by_test.get(entry.id)
+        else entry
+        for entry in entries
+    ]
+
+
 def _implementation_order(entries: Iterable[TestEntry]) -> list[str]:
     names: list[str] = []
     for entry in entries:
@@ -272,7 +285,7 @@ def _case_counts(
     )
     cases: dict[str, object] = {outcome: outcomes[outcome] for outcome in ROW_OUTCOMES}
     counts = [entry.case_count for entry in implemented]
-    # A catalog's case count is known only after it runs, so totals stay unknown.
+    # A catalog that has not run yet has no known case count.
     if None in counts:
         cases.update(total=None, not_run=None)
         return cases

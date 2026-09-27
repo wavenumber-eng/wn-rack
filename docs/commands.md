@@ -263,7 +263,8 @@ Behavior:
   failing, deferred, errored, and not run
 - debt: legacy test files, deferred cases, planned and suspended
   implementations, failing gating rows, and declaration audit findings
-- a catalog's case count is unknown until it runs and shows as `?`
+- a catalog's case count comes from its latest rows; before its first run it
+  is unknown and shows as `?`
 - `rack report` renders the same numbers as the PARITY section of
   `report.html`
 

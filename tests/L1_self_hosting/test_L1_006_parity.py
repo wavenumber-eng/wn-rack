@@ -113,6 +113,10 @@ def test_parity_counts_statuses_cases_and_debt(tmp_path: Path) -> None:
         {"test": "L0_001", "case": "hours_and_minutes", "implementation": "shadow"}
     ]
     assert at(debt, "audit") == []
+    tests = at(report, "tests")
+    assert isinstance(tests, list)
+    (check,) = [test for test in tests if at(test, "id") == "L0_002"]
+    assert at(check, "case_count") == 1
 
 
 def test_parity_reports_invalid_declarations_and_groups_by_concern(tmp_path: Path) -> None:
