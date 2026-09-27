@@ -23,3 +23,15 @@ test_cases = "../fixtures/simple_suite"
 
 [subtests.code_under_test]
 module = "rack.cli"
+
+[[subtests]]
+id = "L1_002"
+file = "test_L1_002_declarations.py"
+name = "Self-Declared Test Declarations"
+description = "Read and validate RACK declarations, entry points, statuses, deferrals, and JSON vector files statically"
+concerns = ["self_hosting", "declarations"]
+test_case_type = "synthetic"
+
+[subtests.code_under_test]
+module = "rack.declarations"
+functions = ["read_declaration", "load_vector_file", "validate_deferrals", "is_self_declared", "decode_value"]
