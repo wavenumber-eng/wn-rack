@@ -204,20 +204,21 @@ def resolve_module_to_path(module: str) -> Path | None:
     if not module:
         return None
 
-    candidates = [
-        SOURCE_DIR / (module.replace(".", "/") + ".py"),
-        SOURCE_DIR / "src" / (module.replace(".", "/") + ".py"),
-        SOURCE_DIR / "src" / "py" / (module.replace(".", "/") + ".py"),
-    ]
+    # A module may be a plain file (foo/bar.py) or a package (foo/bar/__init__.py).
+    relative_stems = [module.replace(".", "/")]
 
     # If the module root already matches the package under test, also try
     # paths relative to SOURCE_DIR itself.
     module_parts = module.split(".", 1)
     if len(module_parts) == 2 and module_parts[0] == SOURCE_DIR.name.replace("-", "_"):
-        stripped = module_parts[1].replace(".", "/") + ".py"
-        candidates.append(SOURCE_DIR / stripped)
-        candidates.append(SOURCE_DIR / "src" / stripped)
-        candidates.append(SOURCE_DIR / "src" / "py" / stripped)
+        relative_stems.append(module_parts[1].replace(".", "/"))
+
+    candidates = []
+    for stem in relative_stems:
+        for suffix in (stem + ".py", stem + "/__init__.py"):
+            candidates.append(SOURCE_DIR / suffix)
+            candidates.append(SOURCE_DIR / "src" / suffix)
+            candidates.append(SOURCE_DIR / "src" / "py" / suffix)
 
     for file_path in candidates:
         if file_path.exists():
@@ -882,6 +883,21 @@ def load_stratum_manifest(stratum: str) -> dict:
     return manifest
 
 
+def code_under_test_blocks(code_under_test) -> list[dict]:
+    """
+    Normalize a subtest's code_under_test declaration to a list of tables.
+
+    STRATUM.toml allows either a single [subtests.code_under_test] table or
+    a [[subtests.code_under_test]] array of tables when one subtest covers
+    multiple modules.
+    """
+    if not code_under_test:
+        return []
+    if isinstance(code_under_test, dict):
+        return [code_under_test]
+    return [block for block in code_under_test if isinstance(block, dict)]
+
+
 def validate_code_under_test(stratum: str) -> list[str]:
     """
     Validate that modules referenced in STRATUM.toml actually exist.
@@ -898,16 +914,24 @@ def validate_code_under_test(stratum: str) -> list[str]:
         return errors
 
     for file_name, subtest_info in manifest.get("subtests", {}).items():
-        code_under_test = subtest_info.get("code_under_test", {})
-        module = code_under_test.get("module", "")
+        declared = subtest_info.get("code_under_test", {})
+        # A malformed declaration must fail validation rather than be dropped
+        # by code_under_test_blocks().
+        if not isinstance(declared, (dict, list)) or (
+            isinstance(declared, list)
+            and any(not isinstance(block, dict) for block in declared)
+        ):
+            errors.append(f"[{stratum}] {file_name}: Invalid code_under_test entry")
+        for code_under_test in code_under_test_blocks(declared):
+            module = code_under_test.get("module", "")
 
-        if module:
-            file_path = resolve_module_to_path(module)
-            if file_path is None:
-                display_path = (TESTS_DIR.parent / (module.replace(".", "/") + ".py")).resolve()
-                errors.append(
-                    f"[{stratum}] {file_name}: Module '{module}' not found at {display_path}"
-                )
+            if module:
+                file_path = resolve_module_to_path(module)
+                if file_path is None:
+                    display_path = (TESTS_DIR.parent / (module.replace(".", "/") + ".py")).resolve()
+                    errors.append(
+                        f"[{stratum}] {file_name}: Module '{module}' not found at {display_path}"
+                    )
 
     return errors
 
@@ -1328,14 +1352,15 @@ def cmd_run(args):
                     # RACK-037: Record source hashes for passing subtests
                     subtest_id = Path(file_name).stem
                     subtest_manifest = manifest.get("subtests", {}).get(file_name, {})
-                    code_under_test = subtest_manifest.get("code_under_test", {})
-
                     # Get modules to track (support both 'module' and 'modules')
                     modules = []
-                    if code_under_test.get("module"):
-                        modules.append(code_under_test["module"])
-                    if code_under_test.get("modules"):
-                        modules.extend(code_under_test["modules"])
+                    for block in code_under_test_blocks(
+                        subtest_manifest.get("code_under_test", {})
+                    ):
+                        if block.get("module"):
+                            modules.append(block["module"])
+                        if block.get("modules"):
+                            modules.extend(block["modules"])
 
                     if modules:
                         update_source_hashes_for_subtest(
@@ -1822,45 +1847,47 @@ def get_code_coverage_map() -> dict:
         for subtest_file, subtest_info in manifest.get("subtests", {}).items():
             subtest_id = Path(subtest_file).stem
             subtest_name = subtest_info.get("name", subtest_file)
-            code_under_test = subtest_info.get("code_under_test", {})
+            for block in code_under_test_blocks(
+                subtest_info.get("code_under_test", {})
+            ):
+                module = block.get("module", "")
+                if not module:
+                    continue
 
-            if not code_under_test:
-                continue
+                # Initialize module entry if needed
+                if module not in by_module:
+                    by_module[module] = {
+                        "classes": {},
+                        "methods": {},
+                        "functions": {},
+                        "tests": [],
+                    }
 
-            module = code_under_test.get("module", "")
-            if not module:
-                continue
-
-            # Initialize module entry if needed
-            if module not in by_module:
-                by_module[module] = {
-                    "classes": {},
-                    "methods": {},
-                    "functions": {},
-                    "tests": [],
+                # Add test to module's test list
+                test_entry = {
+                    "id": subtest_id,
+                    "name": subtest_name,
+                    "stratum": stratum,
                 }
+                by_module[module]["tests"].append(test_entry)
 
-            # Add test to module's test list
-            test_entry = {"id": subtest_id, "name": subtest_name, "stratum": stratum}
-            by_module[module]["tests"].append(test_entry)
+                # Map classes
+                for cls in block.get("classes", []):
+                    if cls not in by_module[module]["classes"]:
+                        by_module[module]["classes"][cls] = []
+                    by_module[module]["classes"][cls].append(test_entry)
 
-            # Map classes
-            for cls in code_under_test.get("classes", []):
-                if cls not in by_module[module]["classes"]:
-                    by_module[module]["classes"][cls] = []
-                by_module[module]["classes"][cls].append(test_entry)
+                # Map methods
+                for method in block.get("methods", []):
+                    if method not in by_module[module]["methods"]:
+                        by_module[module]["methods"][method] = []
+                    by_module[module]["methods"][method].append(test_entry)
 
-            # Map methods
-            for method in code_under_test.get("methods", []):
-                if method not in by_module[module]["methods"]:
-                    by_module[module]["methods"][method] = []
-                by_module[module]["methods"][method].append(test_entry)
-
-            # Map functions
-            for func in code_under_test.get("functions", []):
-                if func not in by_module[module]["functions"]:
-                    by_module[module]["functions"][func] = []
-                by_module[module]["functions"][func].append(test_entry)
+                # Map functions
+                for func in block.get("functions", []):
+                    if func not in by_module[module]["functions"]:
+                        by_module[module]["functions"][func] = []
+                    by_module[module]["functions"][func].append(test_entry)
 
     return {"by_module": by_module}
 
@@ -3293,20 +3320,20 @@ def _generate_subtest_section(stratum: str, subtest: dict, manifest: dict, rack_
     test_cases_path = subtest_manifest.get("test_cases", "")
     test_case_type = subtest_manifest.get("test_case_type", "")
 
-    # Code under test section
+    # Code under test section (one card per declared module block)
     code_html = ""
-    if code_under_test:
-        module = code_under_test.get("module", "")
-        classes = code_under_test.get("classes", [])
-        methods = code_under_test.get("methods", [])
-        functions = code_under_test.get("functions", [])
-        ref_impl = code_under_test.get("reference_implementation", "")
+    for code_block in code_under_test_blocks(code_under_test):
+        module = code_block.get("module", "")
+        classes = code_block.get("classes", [])
+        methods = code_block.get("methods", [])
+        functions = code_block.get("functions", [])
+        ref_impl = code_block.get("reference_implementation", "")
 
         # Resolve module to file path
         file_path = _resolve_module_to_path(module)
         file_path_html = f' <span class="file-path">[{file_path}]</span>' if file_path else ''
 
-        code_html = f"""
+        code_html += f"""
         <div class="info-card">
             <h4>Code Under Test</h4>
             <p><strong>Module:</strong> <span class="code-ref">{module}</span>{file_path_html}</p>

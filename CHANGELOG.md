@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Accept a `[[subtests.code_under_test]]` array of tables so one subtest can
+  declare several modules; validation, coverage mapping, source hashing, and
+  the HTML report handle each block.
+- Resolve `code_under_test` modules that are packages through their
+  `__init__.py`.
+- Fail manifest validation for a malformed `code_under_test` value instead of
+  ignoring it.
+
 ## 2026.7.16
 
 - Add native `rack audit` for Rack manifest/filesystem drift without running

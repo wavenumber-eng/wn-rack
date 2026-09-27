@@ -251,6 +251,22 @@ Fields preserved for reporting but not interpreted deeply by Rack:
 - `native_target`
 - additional descriptive keys you choose to include
 
+When one subtest covers several modules, declare one table per module with a
+TOML array of tables. Each block is validated, mapped, and hashed separately:
+
+```toml
+[[subtests.code_under_test]]
+module = "altium.altium_ole"
+classes = ["AltiumOleFile"]
+
+[[subtests.code_under_test]]
+module = "altium.altium_utilities"
+functions = ["parse_byte_record"]
+```
+
+A `code_under_test` value that is neither a table nor an array of tables fails
+manifest validation.
+
 #### `[subtests.objectives]`
 
 Common fields:
@@ -310,6 +326,9 @@ Rack resolves modules against the inferred source root:
 - `<SOURCE_DIR>/<module_path>.py`
 - `<SOURCE_DIR>/src/<module_path>.py`
 - `<SOURCE_DIR>/src/py/<module_path>.py`
+
+A package resolves through its `__init__.py` at the same three locations, for
+example `<SOURCE_DIR>/src/py/<module_path>/__init__.py`.
 
 `SOURCE_DIR` is currently `TESTS_DIR.parent`.
 

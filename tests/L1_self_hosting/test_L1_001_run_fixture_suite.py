@@ -7,9 +7,93 @@ import subprocess
 import sys
 from pathlib import Path
 
+from rack import cli
+
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_SUITE = ROOT / "tests" / "fixtures" / "simple_suite"
+
+
+def test_code_under_test_validator_accepts_multiple_modules(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli,
+        "load_stratum_manifest",
+        lambda _stratum: {
+            "subtests": {
+                "test_many.py": {
+                    "code_under_test": [
+                        {"module": "rack.cli"},
+                        {"module": "missing.module"},
+                    ]
+                }
+            }
+        },
+    )
+    monkeypatch.setattr(
+        cli,
+        "resolve_module_to_path",
+        lambda module: Path("cli.py") if module == "rack.cli" else None,
+    )
+
+    errors = cli.validate_code_under_test("L1_self_hosting")
+
+    assert len(errors) == 1
+    assert "missing.module" in errors[0]
+
+
+def test_code_under_test_validator_rejects_malformed_entries(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli,
+        "load_stratum_manifest",
+        lambda _stratum: {
+            "subtests": {
+                "test_scalar.py": {"code_under_test": "rack.cli"},
+                "test_mixed.py": {"code_under_test": [{"module": "rack.cli"}, "rack.cli"]},
+            }
+        },
+    )
+    monkeypatch.setattr(cli, "resolve_module_to_path", lambda _module: Path("cli.py"))
+
+    errors = cli.validate_code_under_test("L1_self_hosting")
+
+    assert errors == [
+        "[L1_self_hosting] test_scalar.py: Invalid code_under_test entry",
+        "[L1_self_hosting] test_mixed.py: Invalid code_under_test entry",
+    ]
+
+
+def test_code_coverage_map_includes_each_declared_module(monkeypatch) -> None:
+    monkeypatch.setattr(cli, "get_strata", lambda: ["L1_self_hosting"])
+    monkeypatch.setattr(
+        cli,
+        "load_stratum_manifest",
+        lambda _stratum: {
+            "subtests": {
+                "test_many.py": {
+                    "name": "Many modules",
+                    "code_under_test": [
+                        {"module": "example.first", "classes": ["First"]},
+                        {"module": "example.second", "functions": ["second"]},
+                    ],
+                }
+            }
+        },
+    )
+
+    coverage = cli.get_code_coverage_map()["by_module"]
+
+    assert set(coverage) == {"example.first", "example.second"}
+    assert "First" in coverage["example.first"]["classes"]
+    assert "second" in coverage["example.second"]["functions"]
+
+
+def test_module_resolver_accepts_package_initializer(tmp_path: Path, monkeypatch) -> None:
+    package = tmp_path / "src" / "py" / "example" / "nested" / "__init__.py"
+    package.parent.mkdir(parents=True)
+    package.write_text("", encoding="utf-8")
+    monkeypatch.setattr(cli, "SOURCE_DIR", tmp_path)
+
+    assert cli.resolve_module_to_path("example.nested") == package
 
 
 def test_rack_runs_fixture_suite_and_writes_results() -> None:
