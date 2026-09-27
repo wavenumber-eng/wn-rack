@@ -35,3 +35,15 @@ test_case_type = "synthetic"
 [subtests.code_under_test]
 module = "rack.declarations"
 functions = ["read_declaration", "load_vector_file", "validate_deferrals", "is_self_declared", "decode_value"]
+
+[[subtests]]
+id = "L1_003"
+file = "test_L1_003_outcomes.py"
+name = "Outcomes And Exact Comparison"
+description = "Typed differences with stable paths, exact deferral matching, canonical digests, and report serialization"
+concerns = ["self_hosting", "outcomes"]
+test_case_type = "synthetic"
+
+[subtests.code_under_test]
+module = "rack.outcomes"
+functions = ["compare_exact", "classify", "canonical_digest", "difference_to_dict"]
