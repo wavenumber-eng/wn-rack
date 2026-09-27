@@ -59,7 +59,9 @@ from pathlib import Path
 from typing import Any
 
 from rack._version import __version__
+from rack.accounting import rack_row
 from rack.audit_cli import cmd_audit
+from rack.declarations import manifest_entries
 from rack.parser import build_parser
 from rack.progress import build_progress_environment, make_run_id
 from rack.progress_cli import (
@@ -880,6 +882,10 @@ def load_stratum_manifest(stratum: str) -> dict:
                 "test_case_type": subtest.get("test_case_type", ""),  # RACK-040
             }
 
+    # Self-declared files carry their own entry; it wins over a stray STRATUM
+    # entry, which `rack audit` reports.
+    manifest["subtests"].update(manifest_entries(get_stratum_dir(stratum)))
+
     return manifest
 
 
@@ -1081,6 +1087,7 @@ def cmd_run(args):
     concern_filter = getattr(args, "concern", None)
     subtest_filter = getattr(args, "subtest_filter", None)
     test_filter = getattr(args, "test_filter", None) or getattr(args, "test", None)
+    implementations = (getattr(args, "impl", None) or "").strip()
     active_lane = resolve_active_lane(args)
     progress_requested = bool(getattr(args, "progress", False))
     progress_disabled = bool(getattr(args, "no_progress", False))
@@ -1116,6 +1123,8 @@ def cmd_run(args):
         print(f"SUBTEST FILTER: {subtest_filter}")
     if test_filter:
         print(f"TEST FILTER: {test_filter}")
+    if implementations:
+        print(f"IMPLEMENTATIONS: {implementations}")
     print("=" * 60)
 
     # Validate that referenced modules exist
@@ -1235,6 +1244,8 @@ def cmd_run(args):
         extra_args = ""
         if test_filter and not subtest_filter:
             extra_args = f' -k "{test_filter}"'
+        if implementations:
+            extra_args += f' --rack-impl "{implementations}"'
 
         cmd = (
             f"uv run python -m pytest {pytest_target_str} -v --tb=short "
@@ -1305,13 +1316,17 @@ def cmd_run(args):
                 # Duration is stored in call section by pytest-json-report
                 test_duration = test.get("call", {}).get("duration", 0)
 
-                subtest_results[file_name]["tests"].append({
+                test_record = {
                     "name": test.get("nodeid", "").split("::")[-1],
                     "outcome": outcome,
                     "duration": test_duration,
                     "message": message,  # Short message for display
                     "longrepr": longrepr,  # Full traceback/reason
-                })
+                }
+                row = rack_row(test)
+                if row is not None:
+                    test_record["rack"] = row
+                subtest_results[file_name]["tests"].append(test_record)
 
                 # Accumulate test duration for subtest
                 subtest_results[file_name]["duration"] += test_duration
@@ -2185,13 +2200,17 @@ def cmd_refresh(args):
             # Duration is stored in call section by pytest-json-report
             test_duration = test.get("call", {}).get("duration", 0)
 
-            subtest_results[file_name]["tests"].append({
+            test_record = {
                 "name": test.get("nodeid", "").split("::")[-1],
                 "outcome": outcome,
                 "duration": test_duration,
                 "message": message,
                 "longrepr": longrepr,
-            })
+            }
+            row = rack_row(test)
+            if row is not None:
+                test_record["rack"] = row
+            subtest_results[file_name]["tests"].append(test_record)
 
             subtest_results[file_name]["duration"] += test_duration
 

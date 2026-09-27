@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
+import ast
+import re
 import tomllib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
+
+from rack.declarations import (
+    DeclarationError,
+    TestDeclaration,
+    declared_test_files,
+    load_declaration,
+    load_vector_file,
+    validate_deferrals,
+)
 
 AUDIT_REPORT_TYPE = "rack.audit_report"
 AUDIT_REPORT_VERSION = "a0"
@@ -93,6 +104,7 @@ def audit_suite(
         _validate_extra_strata(tests_root, strata, failures)
         for stratum in selected_strata:
             _validate_stratum(tests_root, stratum, strict, failures)
+        _validate_declared_suite(tests_root, selected_strata, strata, failures)
         if target_stratum is None:
             _validate_signoff_strata(tests_root, strata, configured_signoff, failures)
 
@@ -255,10 +267,11 @@ def _validate_stratum(
     if manifest is None:
         return
 
-    subtests = _manifest_subtests(root, stratum, manifest, strict, failures)
+    declared = {path.name for path in declared_test_files(stratum_dir)}
+    subtests = _manifest_subtests(root, stratum, manifest, strict, bool(declared), failures)
     _validate_unique_field(stratum, subtests, "id", "duplicate_subtest_id", failures)
     _validate_unique_field(stratum, subtests, "file", "duplicate_subtest_file", failures)
-    _validate_subtest_files(root, stratum, subtests, failures)
+    _validate_subtest_files(root, stratum, subtests, declared, failures)
 
 
 def _manifest_subtests(
@@ -266,10 +279,13 @@ def _manifest_subtests(
     stratum: str,
     manifest: Mapping[str, object],
     strict: bool,
+    has_declared: bool,
     failures: list[AuditFailure],
 ) -> tuple[Mapping[str, object], ...]:
     subtests_raw = manifest.get("subtests")
     manifest_path = f"{stratum}/STRATUM.toml"
+    if subtests_raw is None and has_declared:
+        return ()
     if not isinstance(subtests_raw, list):
         failures.append(
             _failure(
@@ -394,15 +410,25 @@ def _validate_subtest_files(
     root: Path,
     stratum: str,
     subtests: Sequence[Mapping[str, object]],
+    declared: set[str],
     failures: list[AuditFailure],
 ) -> None:
     stratum_dir = root / stratum
     manifest_files = {
-        file_value
-        for subtest in subtests
-        if (file_value := _string_value(subtest.get("file")))
+        file_value for subtest in subtests if (file_value := _string_value(subtest.get("file")))
     }
-    discovered_files = {path.name for path in stratum_dir.glob("test_*.py")}
+    for file_name in sorted(manifest_files & declared):
+        failures.append(
+            _failure(
+                "declared_file_in_manifest",
+                f"{stratum}/STRATUM.toml has a subtest entry for self-declared {file_name}",
+                f"{stratum}/STRATUM.toml",
+                stratum=stratum,
+                subtest=file_name,
+            )
+        )
+    manifest_files -= declared
+    discovered_files = {path.name for path in stratum_dir.glob("test_*.py")} - declared
     for file_name in sorted(discovered_files - manifest_files):
         failures.append(
             _failure(
@@ -447,7 +473,7 @@ def _validate_signoff_strata(
         manifest = _load_toml(root, manifest_path, failures, stratum=signoff_stratum)
         if manifest is None:
             continue
-        if not _manifest_has_subtests(manifest):
+        if not _manifest_has_subtests(manifest) and not declared_test_files(root / signoff_stratum):
             failures.append(
                 _failure(
                     "empty_signoff_stratum",
@@ -456,6 +482,192 @@ def _validate_signoff_strata(
                     stratum=signoff_stratum,
                 )
             )
+
+
+def _validate_declared_suite(
+    root: Path,
+    selected: tuple[str, ...],
+    strata: tuple[str, ...],
+    failures: list[AuditFailure],
+) -> None:
+    """Check self-declared files: declarations, cases, id collisions, test imports."""
+    declarations = _suite_declarations(root, strata)
+    for stratum in selected:
+        for path in declared_test_files(root / stratum):
+            declaration = _read_declared(root, stratum, path, failures)
+            if declaration is not None:
+                _validate_declared_cases(root, stratum, declaration, failures)
+    selected_paths = {path.resolve() for s in selected for path in declared_test_files(root / s)}
+    local = [d for d in declarations if d.path.resolve() in selected_paths]
+    _validate_declared_ids(root, strata, declarations, local, failures)
+    _validate_test_imports(root, selected, declarations, failures)
+
+
+def _suite_declarations(root: Path, strata: tuple[str, ...]) -> list[TestDeclaration]:
+    declarations: list[TestDeclaration] = []
+    for stratum in strata:
+        for path in declared_test_files(root / stratum):
+            try:
+                declarations.append(load_declaration(path))
+            except DeclarationError:
+                continue
+    return declarations
+
+
+def _read_declared(
+    root: Path, stratum: str, path: Path, failures: list[AuditFailure]
+) -> TestDeclaration | None:
+    try:
+        return load_declaration(path)
+    except DeclarationError as exc:
+        failures.append(
+            _failure(
+                "invalid_declaration",
+                str(exc),
+                _relative(root, path),
+                stratum=stratum,
+                subtest=path.name,
+            )
+        )
+    return None
+
+
+def _validate_declared_cases(
+    root: Path, stratum: str, declaration: TestDeclaration, failures: list[AuditFailure]
+) -> None:
+    # Catalog cases need suite code to enumerate; collection validates them.
+    file_ref = declaration.cases.get("file")
+    if not isinstance(file_ref, str):
+        return
+    try:
+        vectors = load_vector_file(declaration.path.parent / file_ref)
+        validate_deferrals(declaration, tuple(case.id for case in vectors.cases))
+    except DeclarationError as exc:
+        failures.append(
+            _failure(
+                "invalid_cases",
+                str(exc),
+                _relative(root, declaration.path),
+                stratum=stratum,
+                subtest=declaration.path.name,
+            )
+        )
+
+
+def _validate_declared_ids(
+    root: Path,
+    strata: tuple[str, ...],
+    declarations: Sequence[TestDeclaration],
+    local: Sequence[TestDeclaration],
+    failures: list[AuditFailure],
+) -> None:
+    """A self-declared id is unique across the suite, legacy ids included.
+
+    Duplicate ids between legacy entries in different strata stay out of scope.
+    """
+    owners: dict[str, list[str]] = {}
+    for declaration in declarations:
+        owners.setdefault(declaration.id, []).append(_relative(root, declaration.path))
+    for stratum in strata:
+        for test_id, file_name in _legacy_ids(root, stratum):
+            if test_id in owners:
+                owners[test_id].append(f"{stratum}/{file_name}")
+    for test_id in sorted({declaration.id for declaration in local}):
+        paths = sorted(owners[test_id])
+        if len(paths) > 1:
+            failures.append(
+                _failure(
+                    "duplicate_test_id",
+                    f"test id {test_id} is used by {', '.join(paths)}",
+                    paths[0],
+                    subtest=test_id,
+                )
+            )
+
+
+def _legacy_ids(root: Path, stratum: str) -> list[tuple[str, str]]:
+    manifest_path = root / stratum / "STRATUM.toml"
+    if not manifest_path.is_file():
+        return []
+    try:
+        with manifest_path.open("rb") as handle:
+            manifest = tomllib.load(handle)
+    except tomllib.TOMLDecodeError:
+        return []
+    declared = {path.name for path in declared_test_files(root / stratum)}
+    ids: list[tuple[str, str]] = []
+    for subtest in manifest.get("subtests", []):
+        if isinstance(subtest, dict):
+            test_id = _string_value(subtest.get("id"))
+            file_name = _string_value(subtest.get("file"))
+            if test_id and file_name not in declared:
+                ids.append((test_id, file_name))
+    return ids
+
+
+def _validate_test_imports(
+    root: Path,
+    selected: tuple[str, ...],
+    declarations: Sequence[TestDeclaration],
+    failures: list[AuditFailure],
+) -> None:
+    """No self-declared file imports a test module, and nothing imports one.
+
+    Imports between legacy test files are left alone until they are converted.
+    """
+    declared_paths = {declaration.path.resolve() for declaration in declarations}
+    if not declared_paths:
+        return
+    declared_stems = {path.stem for path in declared_paths}
+    mention = re.compile("|".join(re.escape(stem) for stem in sorted(declared_stems)))
+    for stratum in selected:
+        for path in _python_files(root / stratum):
+            is_declared = path.resolve() in declared_paths
+            for module in _test_module_imports(path, is_declared, mention):
+                if is_declared or module in declared_stems:
+                    failures.append(
+                        _failure(
+                            "test_module_import",
+                            f"{_relative(root, path)} imports test module {module}",
+                            _relative(root, path),
+                            stratum=stratum,
+                        )
+                    )
+
+
+def _python_files(directory: Path) -> list[Path]:
+    return [
+        path
+        for path in sorted(directory.rglob("*.py"))
+        if not IGNORED_TEST_DIR_NAMES.intersection(path.parts)
+    ]
+
+
+def _test_module_imports(path: Path, is_declared: bool, mention: re.Pattern[str]) -> list[str]:
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    if not is_declared and not mention.search(source):
+        return []
+    try:
+        tree = ast.parse(source, filename=str(path))
+    except SyntaxError:
+        return []
+    return [name for name in _imported_leaf_names(tree) if name.startswith("test_")]
+
+
+def _imported_leaf_names(tree: ast.Module) -> list[str]:
+    names: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.extend(alias.name.rsplit(".", 1)[-1] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                names.append(node.module.rsplit(".", 1)[-1])
+            # "from . import test_x" names the module in the alias.
+            names.extend(alias.name for alias in node.names)
+    return names
 
 
 def _manifest_has_subtests(manifest: Mapping[str, object]) -> bool:

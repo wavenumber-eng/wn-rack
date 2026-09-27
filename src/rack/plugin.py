@@ -77,7 +77,7 @@ def pytest_unconfigure(config: pytest.Config) -> None:
 def pytest_pycollect_makemodule(
     module_path: Path, parent: pytest.Collector
 ) -> pytest.Module | None:
-    if module_path.name.startswith("test_") and _looks_self_declared(module_path):
+    if module_path.name.startswith("test_") and is_self_declared(module_path):
         return RackFile.from_parent(parent, path=module_path)
     return None
 
@@ -430,12 +430,3 @@ def _registered_markers(config: pytest.Config) -> set[str]:
 def _table(data: Mapping[str, object], key: str) -> Mapping[str, object]:
     value = data.get(key, {})
     return value if isinstance(value, Mapping) else {}
-
-
-def _looks_self_declared(path: Path) -> bool:
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return False
-    # Cheap filter first; the AST check rejects RACK text inside string literals.
-    return "RACK = " in text and is_self_declared(path)

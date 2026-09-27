@@ -3,3 +3,12 @@ order = 0
 description = "Self-declared fixture tests"
 enabled = true
 concerns = ["fixture"]
+
+# Only legacy files need entries; self-declared files carry their own.
+[[subtests]]
+id = "L0_004"
+file = "test_L0_004_legacy.py"
+name = "Legacy Style"
+description = "A legacy test file beside self-declared ones"
+concerns = ["fixture"]
+test_case_type = "synthetic"

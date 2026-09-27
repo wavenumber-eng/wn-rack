@@ -18,6 +18,7 @@ Examples:
   rack run L0           Run L0_foundation stratum
   rack run --concern svg  Run only SVG-tagged subtests
   rack run L8_010::test_name  Run one test from a subtest
+  rack run L1 --impl python,rust  Run self-declared rows for chosen implementations
   rack list             List all strata
   rack list L0          List subtests in L0
   rack list --concern svg.text  List only concern-matching subtests
@@ -42,6 +43,10 @@ Examples:
     run_parser.add_argument("--concern", help="Run only subtests tagged with concern")
     run_parser.add_argument("--lane", choices=["fast", "full", "strict"], help="Execution lane")
     run_parser.add_argument("--test", help="Run specific test name/expression")
+    run_parser.add_argument(
+        "--impl",
+        help="Comma-separated implementations for self-declared tests (default: implemented ones)",
+    )
     run_parser.add_argument("--progress", action="store_true", help="Enable Rack JSONL progress")
     run_parser.add_argument("--no-progress", action="store_true", help="Disable progress reporting")
 

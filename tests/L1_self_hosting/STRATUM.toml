@@ -60,3 +60,23 @@ test_cases = "../fixtures/declared_suite"
 [subtests.code_under_test]
 module = "rack.plugin"
 classes = ["RackFile", "RackItem", "RackCase", "Suite"]
+
+[[subtests]]
+id = "L1_005"
+file = "test_L1_005_declared_cli.py"
+name = "Self-Declared Files In Rack Commands"
+description = "Audit rules for self-declared files and run --impl, list, refresh, report, inventory, status, and audit over a mixed suite"
+concerns = ["self_hosting", "declarations", "cli"]
+test_case_type = "synthetic"
+test_cases = "../fixtures/declared_suite"
+
+[[subtests.code_under_test]]
+module = "rack.audit"
+
+[[subtests.code_under_test]]
+module = "rack.accounting"
+functions = ["rack_row"]
+
+[[subtests.code_under_test]]
+module = "rack.declarations"
+functions = ["declared_test_files", "load_declaration", "manifest_entries", "manifest_entry"]

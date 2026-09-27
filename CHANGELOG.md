@@ -12,6 +12,12 @@
   implementation), applies lanes and `--rack-impl` selection, and records the
   Rack outcome and typed differences in `user_properties`. Files without a
   top-level `RACK` assignment are untouched.
+- `rack run --impl` selects implementations for self-declared tests. Subtest
+  and stratum JSON carry each row's Rack outcome under `"rack"`.
+- `rack list`, `run`, `report`, `refresh`, `inventory`, and `status` read
+  self-declared files through the same declaration loader as the plugin;
+  `rack audit` validates declarations, vector files, id collisions, and
+  imports of test modules involving self-declared files.
 - Accept a `[[subtests.code_under_test]]` array of tables so one subtest can
   declare several modules; validation, coverage mapping, source hashing, and
   the HTML report handle each block.

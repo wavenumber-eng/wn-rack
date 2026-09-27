@@ -37,6 +37,7 @@ rack run L5_001::test_name
 rack run --concern svg
 rack run L5 --test roundtrip
 rack run L4_125 --progress
+rack run L1 --impl python,rust
 ```
 
 ### Selection Rules
@@ -50,6 +51,15 @@ rack run L4_125 --progress
   Rack finds the subtest file whose stem starts with that prefix
 - direct test token like `L5_001::test_name`:
   Rack runs one pytest function inside the resolved subtest file
+
+### Implementations
+
+`--impl` selects implementations for self-declared tests (see
+[Self-Declared Tests](./design/self-declared-tests.md)) and is passed to pytest
+as `--rack-impl`. Without it, every `implemented` implementation runs; planned
+and suspended ones run only when named. Each row's Rack outcome, detail, and
+typed differences appear under `"rack"` in the subtest and stratum JSON. Legacy
+test files ignore the option.
 
 ### Progress Reporting
 
@@ -203,6 +213,16 @@ Behavior:
 - compares discovered `test_*.py` files with `[[subtests]].file`
 - rejects declared subtest files that do not exist
 - rejects duplicate subtest ids and duplicate declared files
+- self-declared test files need no `[[subtests]]` entry, and an entry for one
+  fails (`declared_file_in_manifest`)
+- validates each self-declared file's `RACK` declaration
+  (`invalid_declaration`) and, for vector-file cases, the vectors and their
+  deferrals (`invalid_cases`)
+- rejects a self-declared id used by another test in the suite
+  (`duplicate_test_id`)
+- rejects imports of a test module by a self-declared file, and imports of a
+  self-declared test module by any file (`test_module_import`); imports between
+  legacy test files are not checked
 - requires the conventional `L99_signoff` stratum unless overridden with
   `--signoff-stratum`
 - `--strict` also fails missing `test_cases` and `test_case_type`

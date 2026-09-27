@@ -1,0 +1,147 @@
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+from collections.abc import Callable
+from pathlib import Path
+
+import pytest
+
+from rack.audit import audit_suite
+
+ROOT = Path(__file__).resolve().parents[2]
+SOURCE_SUITE = ROOT / "tests" / "fixtures" / "declared_suite"
+UNITS = Path("L0_units")
+TEST_L0_001 = UNITS / "test_L0_001_parse_duration.py"
+
+
+def copy_suite(tmp_path: Path) -> Path:
+    suite = tmp_path / "declared_suite"
+    shutil.copytree(
+        SOURCE_SUITE, suite, ignore=shutil.ignore_patterns("__pycache__", "rack_results")
+    )
+    return suite
+
+
+def audit_codes(suite: Path) -> list[str]:
+    report = audit_suite(suite, signoff_strata=("L0_units",))
+    return sorted(failure.code for failure in report.failures)
+
+
+def replace_in(path: Path, old: str, new: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    assert old in text
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def rack(*args: str) -> subprocess.CompletedProcess[str]:
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in ("RACK_LANE", "WN_RACK_LANE", "WN_TEST_LANE", "RACK_IMPL")
+    }
+    env["RACK_TESTS_DIR"] = str(SOURCE_SUITE)
+    return subprocess.run(
+        [sys.executable, "-m", "rack", *args],
+        cwd=ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_audit_accepts_a_mixed_suite_without_entries_for_declared_files(tmp_path: Path) -> None:
+    assert audit_codes(copy_suite(tmp_path)) == []
+
+
+def add_manifest_entry(suite: Path) -> None:
+    with (suite / UNITS / "STRATUM.toml").open("a", encoding="utf-8") as handle:
+        handle.write('\n[[subtests]]\nid = "L0_001"\nfile = "test_L0_001_parse_duration.py"\n')
+
+
+def break_declaration(suite: Path) -> None:
+    replace_in(suite / TEST_L0_001, '"comparator": "exact"', '"compare": "exact"')
+
+
+def break_vectors(suite: Path) -> None:
+    replace_in(
+        suite / UNITS / "vectors" / "L0_001_parse_duration.json", '"fractional_hours"', '"x"'
+    )
+
+
+def duplicate_id(suite: Path) -> None:
+    replace_in(suite / UNITS / "STRATUM.toml", 'id = "L0_004"', 'id = "L0_001"')
+
+
+def helper_imports_test(suite: Path) -> None:
+    (suite / UNITS / "helpers.py").write_text(
+        "from test_L0_001_parse_duration import RACK\n", encoding="utf-8"
+    )
+
+
+def declared_imports_test(suite: Path) -> None:
+    replace_in(
+        suite / TEST_L0_001,
+        "\n\ndef run(case, impl):",
+        "\n\nimport test_L0_004_legacy as _legacy\n\n\ndef run(case, impl):",
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutate", "codes"),
+    [
+        (add_manifest_entry, ["declared_file_in_manifest"]),
+        (break_declaration, ["invalid_declaration"]),
+        (break_vectors, ["invalid_cases"]),
+        (duplicate_id, ["duplicate_test_id"]),
+        (helper_imports_test, ["test_module_import"]),
+        (declared_imports_test, ["test_module_import"]),
+    ],
+)
+def test_audit_rules_for_declared_files(
+    tmp_path: Path, mutate: Callable[[Path], None], codes: list[str]
+) -> None:
+    suite = copy_suite(tmp_path)
+    mutate(suite)
+
+    assert audit_codes(suite) == codes
+
+
+def test_cli_commands_read_declared_files() -> None:
+    results = SOURCE_SUITE / "rack_results"
+    if results.exists():
+        shutil.rmtree(results)
+
+    run = rack("run", "--all", "--impl", "shadow", "--lane", "full")
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert "IMPLEMENTATIONS: shadow" in run.stdout
+
+    subtest = json.loads(
+        (results / "subtests" / "test_L0_001_parse_duration.json").read_text(encoding="utf-8")
+    )
+    rows = {test["name"]: test["rack"] for test in subtest["tests"]}
+    assert rows["L0_001[long_form-shadow]"]["outcome"] == "pass"
+    assert rows["L0_001[fractional_hours-shadow]"]["outcome"] == "deferred"
+    assert rows["L0_001[fractional_hours-python]"]["detail"] == "implementation not selected"
+    assert subtest["status"] == "passed"
+
+    listed = rack("list", "L0_units", "--concern", "fixture")
+    assert listed.returncode == 0, listed.stdout + listed.stderr
+    for name in ("test_L0_001_parse_duration.py", "test_L0_002_vector_provenance.py"):
+        assert name in listed.stdout
+
+    for command in (("refresh",), ("report",), ("inventory",), ("status",)):
+        completed = rack(*command)
+        assert completed.returncode == 0, (command, completed.stdout + completed.stderr)
+
+    refreshed = json.loads((results / "strata" / "L0_units.json").read_text(encoding="utf-8"))
+    (declared,) = [s for s in refreshed["subtests"] if s["file"] == "test_L0_001_parse_duration.py"]
+    assert all("rack" in test for test in declared["tests"])
+    assert "Duration parsing" in (results / "report.html").read_text(encoding="utf-8")
+
+    audited = rack("audit", "--signoff-stratum", "L0_units")
+    assert audited.returncode == 0, audited.stdout + audited.stderr
