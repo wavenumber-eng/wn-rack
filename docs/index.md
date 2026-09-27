@@ -18,6 +18,9 @@ This package has these reference documents:
   Provides machine-checkable public interface design anchors.
 - [Runtime Progress Reporting Design](./design/runtime-progress.md)
   Defines the draft JSONL and environment contract for long-running tests.
+- [Self-Declared Tests Design](./design/self-declared-tests.md)
+  Draft: one test per file with a static declaration, shared cases for every
+  implementation, independent expectations, and parity accounting.
 - [Audit Report Schema](./contracts/rack_audit_report.a0.schema.json)
   Defines the versioned JSON contract emitted by `rack audit --format json`.
 
