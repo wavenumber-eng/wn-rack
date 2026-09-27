@@ -21,6 +21,7 @@ classifiers = [
 dependencies = [
     "pytest>=8.0.0",
     "pytest-json-report>=1.5.0",
+    "pytest-xdist>=3.6",
     "tomli-w>=1.2.0",
 ]
 

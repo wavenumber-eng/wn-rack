@@ -101,3 +101,24 @@ functions = ["render_parity_html"]
 [[subtests.code_under_test]]
 module = "rack.parity_cli"
 functions = ["cmd_parity"]
+
+[[subtests]]
+id = "L1_007"
+file = "test_L1_007_parallel.py"
+name = "Parallel Runs"
+description = "rack run --jobs uses pytest-xdist for opted-in strata, falls back to serial runs, and merges per-worker progress files"
+concerns = ["self_hosting", "parallel"]
+test_case_type = "synthetic"
+test_cases = "../fixtures/declared_suite"
+
+[[subtests.code_under_test]]
+module = "rack.parallel"
+functions = ["xdist_arguments"]
+
+[[subtests.code_under_test]]
+module = "rack.progress"
+functions = ["worker_progress_file"]
+
+[[subtests.code_under_test]]
+module = "rack.progress_cli"
+classes = ["ProgressTailer"]

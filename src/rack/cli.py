@@ -62,6 +62,7 @@ from rack._version import __version__
 from rack.accounting import rack_row
 from rack.audit_cli import cmd_audit
 from rack.declarations import manifest_entries
+from rack.parallel import xdist_arguments
 from rack.parity import build_parity
 from rack.parity_cli import cmd_parity
 from rack.parity_html import render_parity_html
@@ -1091,6 +1092,7 @@ def cmd_run(args):
     subtest_filter = getattr(args, "subtest_filter", None)
     test_filter = getattr(args, "test_filter", None) or getattr(args, "test", None)
     implementations = (getattr(args, "impl", None) or "").strip()
+    jobs = int(getattr(args, "jobs", None) or 1)
     active_lane = resolve_active_lane(args)
     progress_requested = bool(getattr(args, "progress", False))
     progress_disabled = bool(getattr(args, "no_progress", False))
@@ -1249,6 +1251,12 @@ def cmd_run(args):
             extra_args = f' -k "{test_filter}"'
         if implementations:
             extra_args += f' --rack-impl "{implementations}"'
+        xdist_args, serial_note = xdist_arguments(
+            jobs, load_stratum_config(stratum), load_rack_config(), implementations
+        )
+        extra_args += xdist_args
+        if serial_note:
+            print(f"  Jobs: {serial_note}")
 
         cmd = (
             f"uv run python -m pytest {pytest_target_str} -v --tb=short "

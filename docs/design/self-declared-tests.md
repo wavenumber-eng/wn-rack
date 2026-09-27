@@ -370,9 +370,14 @@ commit a suite pins is also checked by running that suite.
 using pytest-xdist. It is tried first on L0 and adopted where it shortens the
 test cycle. Requirements:
 
-- a stratum opts in through `STRATUM.toml`; an implementation that needs an
-  exclusive resource declares `parallel = false` and its rows run serially;
-- shared builds (for example a native runner) complete before workers start;
+- a stratum opts in through `STRATUM.toml` (`parallel = true`); an
+  implementation that needs an exclusive resource declares `parallel = false`,
+  and strata run serially while it is selected;
+- Rack uses `--dist loadfile` so a file's rows, module fixtures, and budget
+  baselines share one worker;
+- the suite builds shared artifacts (for example a native runner) before
+  workers start, or guards the build with a lock, because session fixtures run
+  once per worker;
 - per-worker adapters start once per worker;
 - result files, progress events, and `RackOutput` are written per worker and
   merged by Rack.

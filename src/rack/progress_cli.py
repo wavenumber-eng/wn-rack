@@ -95,18 +95,26 @@ def run_command_with_progress_tail(
 
 
 class ProgressTailer:
+    """Tail a progress file and the per-worker files written beside it."""
+
     def __init__(self, progress_file: Path) -> None:
         self.progress_file = progress_file
-        self.offset = 0
+        self.offsets: dict[Path, int] = {}
 
     def drain(self) -> None:
-        if not self.progress_file.exists():
+        pattern = f"{self.progress_file.stem}.gw*{self.progress_file.suffix}"
+        worker_files = sorted(self.progress_file.parent.glob(pattern))
+        for path in [self.progress_file, *worker_files]:
+            self._drain_file(path)
+
+    def _drain_file(self, path: Path) -> None:
+        if not path.exists():
             return
 
-        with self.progress_file.open("r", encoding="utf-8") as handle:
-            handle.seek(self.offset)
+        with path.open("r", encoding="utf-8") as handle:
+            handle.seek(self.offsets.get(path, 0))
             lines = handle.readlines()
-            self.offset = handle.tell()
+            self.offsets[path] = handle.tell()
 
         for line in lines:
             self._emit_line(line)

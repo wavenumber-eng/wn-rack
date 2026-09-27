@@ -45,6 +45,12 @@ Examples:
     run_parser.add_argument("--lane", choices=["fast", "full", "strict"], help="Execution lane")
     run_parser.add_argument("--test", help="Run specific test name/expression")
     run_parser.add_argument(
+        "--jobs",
+        type=int,
+        default=1,
+        help="Parallel pytest-xdist workers for strata that set parallel = true",
+    )
+    run_parser.add_argument(
         "--impl",
         help="Comma-separated implementations for self-declared tests (default: implemented ones)",
     )

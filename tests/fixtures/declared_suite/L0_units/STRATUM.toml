@@ -3,6 +3,7 @@ order = 0
 description = "Self-declared fixture tests"
 enabled = true
 concerns = ["fixture"]
+parallel = true
 
 # Only legacy files need entries; self-declared files carry their own.
 [[subtests]]

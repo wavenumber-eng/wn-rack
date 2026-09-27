@@ -38,6 +38,7 @@ rack run --concern svg
 rack run L5 --test roundtrip
 rack run L4_125 --progress
 rack run L1 --impl python,rust
+rack run L0 --jobs 8
 ```
 
 ### Selection Rules
@@ -60,6 +61,16 @@ as `--rack-impl`. Without it, every `implemented` implementation runs; planned
 and suspended ones run only when named. Each row's Rack outcome, detail, and
 typed differences appear under `"rack"` in the subtest and stratum JSON. Legacy
 test files ignore the option.
+
+### Parallel Workers
+
+`--jobs N` runs a stratum with N pytest-xdist workers when its `STRATUM.toml`
+sets `parallel = true`; other strata run serially and Rack prints why. Rack
+passes `--dist loadfile`, so each test file stays on one worker. An
+implementation that needs an exclusive resource sets `parallel = false` under
+`[implementations.<name>]` in `rack.toml`; while it is selected, strata run
+serially. Session fixtures and adapters start once per worker, and progress
+events are written per worker and merged by the progress tail.
 
 ### Progress Reporting
 

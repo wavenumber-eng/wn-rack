@@ -61,6 +61,18 @@ def build_progress_environment(
     return env
 
 
+def worker_progress_file(path: Path) -> Path:
+    """Give each pytest-xdist worker its own progress file beside ``path``.
+
+    Concurrent appends from several processes are not atomic on every platform,
+    so workers write ``<stem>.<worker><suffix>`` and the tailer merges them.
+    """
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "").strip()
+    if not worker:
+        return path
+    return path.with_name(f"{path.stem}.{worker}{path.suffix}")
+
+
 class ProgressReporter:
     """Emit Rack runtime progress events from Python tests or helper scripts."""
 
@@ -102,13 +114,13 @@ class ProgressReporter:
 
         env_file = os.environ.get(ENV_PROGRESS_FILE)
         if env_file:
-            return Path(env_file)
+            return worker_progress_file(Path(env_file))
 
         progress_dir = os.environ.get(ENV_PROGRESS_DIR)
         if not progress_dir:
             return None
 
-        return Path(progress_dir) / f"{self.run_id}.jsonl"
+        return worker_progress_file(Path(progress_dir) / f"{self.run_id}.jsonl")
 
     def start(self, **fields: Any) -> dict[str, Any] | None:
         return self.emit("start", **fields)

@@ -22,6 +22,9 @@
   implementation statuses, case outcomes, and debt, with the versioned
   `rack.parity_report` `a0` JSON contract. `rack report` adds a PARITY section
   with the implementation grid, per-test case outcomes, and the debt view.
+- Add `rack run --jobs N` for strata that set `parallel = true`, using
+  pytest-xdist (now a dependency) with `--dist loadfile`. Progress events are
+  written per worker and merged by the progress tail.
 - Accept a `[[subtests.code_under_test]]` array of tables so one subtest can
   declare several modules; validation, coverage mapping, source hashing, and
   the HTML report handle each block.
