@@ -343,8 +343,10 @@ view grouped by stratum and concern so patterns are visible at a glance.
 
 A suite that keeps a traceability database builds it from this JSON. `rack
 audit` reads declarations statically and reports structure debt without running
-tests; its report contract moves to a new version because self-declared files
-have no `[[subtests]]` entry.
+tests. Its `a0` report keeps its shape; self-declared files add failure codes
+(`invalid_declaration`, `invalid_cases`, `declared_file_in_manifest`,
+`duplicate_test_id`, `test_module_import`). `rack parity --format json` uses the
+`rack.parity_report` `a0` contract.
 
 ## Compatibility and migration
 

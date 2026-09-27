@@ -66,6 +66,7 @@ path = "src/rack/_version.py"
 
 [tool.hatch.build.targets.wheel.force-include]
 "docs/contracts/rack_audit_report.a0.schema.json" = "rack/contracts/rack_audit_report.a0.schema.json"
+"docs/contracts/rack_parity_report.a0.schema.json" = "rack/contracts/rack_parity_report.a0.schema.json"
 
 [tool.hatch.build.targets.sdist]
 include = [

@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/wavenumber-eng/wn-rack/docs/contracts/rack_parity_report.a0.schema.json",
+  "title": "Rack Parity Report A0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "version", "group_by", "strata", "implementations", "groups", "totals", "tests", "debt"],
+  "properties": {
+    "type": { "const": "rack.parity_report" },
+    "version": { "const": "a0" },
+    "group_by": { "enum": ["stratum", "concern"] },
+    "strata": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "implementations": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "groups": { "type": "array", "items": { "$ref": "#/$defs/group" } },
+    "totals": { "$ref": "#/$defs/group" },
+    "tests": { "type": "array", "items": { "$ref": "#/$defs/test" } },
+    "debt": { "$ref": "#/$defs/debt" }
+  },
+  "$defs": {
+    "count": { "type": "integer", "minimum": 0 },
+    "optional_count": { "type": ["integer", "null"], "minimum": 0 },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "files", "declared", "legacy", "invalid", "checks", "implementations"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "files": { "$ref": "#/$defs/count" },
+        "declared": { "$ref": "#/$defs/count" },
+        "legacy": { "$ref": "#/$defs/count" },
+        "invalid": { "$ref": "#/$defs/count" },
+        "checks": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["files", "pass", "fail", "deferred", "error"],
+          "properties": {
+            "files": { "$ref": "#/$defs/count" },
+            "pass": { "$ref": "#/$defs/count" },
+            "fail": { "$ref": "#/$defs/count" },
+            "deferred": { "$ref": "#/$defs/count" },
+            "error": { "$ref": "#/$defs/count" }
+          }
+        },
+        "implementations": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/implementation_summary" }
+        }
+      }
+    },
+    "implementation_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tests", "cases"],
+      "properties": {
+        "tests": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["implemented", "planned", "suspended", "not_applicable"],
+          "properties": {
+            "implemented": { "$ref": "#/$defs/count" },
+            "planned": { "$ref": "#/$defs/count" },
+            "suspended": { "$ref": "#/$defs/count" },
+            "not_applicable": { "$ref": "#/$defs/count" }
+          }
+        },
+        "cases": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pass", "fail", "deferred", "error", "total", "not_run"],
+          "properties": {
+            "pass": { "$ref": "#/$defs/count" },
+            "fail": { "$ref": "#/$defs/count" },
+            "deferred": { "$ref": "#/$defs/count" },
+            "error": { "$ref": "#/$defs/count" },
+            "total": { "$ref": "#/$defs/optional_count" },
+            "not_run": { "$ref": "#/$defs/optional_count" }
+          }
+        }
+      }
+    },
+    "test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stratum", "file", "id", "title", "kind", "concerns", "case_count", "cells"],
+      "properties": {
+        "stratum": { "type": "string", "minLength": 1 },
+        "file": { "type": "string", "minLength": 1 },
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string" },
+        "kind": { "enum": ["test", "check", "legacy", "invalid"] },
+        "concerns": { "type": "array", "items": { "type": "string" } },
+        "case_count": { "$ref": "#/$defs/optional_count" },
+        "cells": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["status", "note", "outcomes", "cases"],
+            "properties": {
+              "status": { "type": "string" },
+              "note": { "type": "string" },
+              "outcomes": { "type": "object", "additionalProperties": { "$ref": "#/$defs/count" } },
+              "cases": { "type": "object", "additionalProperties": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    "debt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["legacy_files", "deferred", "planned", "suspended", "failing", "audit"],
+      "properties": {
+        "legacy_files": { "type": "array", "items": { "type": "string" } },
+        "deferred": { "type": "array", "items": { "type": "object" } },
+        "planned": { "type": "array", "items": { "type": "object" } },
+        "suspended": { "type": "array", "items": { "type": "object" } },
+        "failing": { "type": "array", "items": { "type": "object" } },
+        "audit": { "type": "array", "items": { "type": "object" } }
+      }
+    }
+  }
+}

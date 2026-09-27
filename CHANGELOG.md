@@ -18,6 +18,10 @@
   self-declared files through the same declaration loader as the plugin;
   `rack audit` validates declarations, vector files, id collisions, and
   imports of test modules involving self-declared files.
+- Add `rack parity` for per-stratum or per-concern accounting of
+  implementation statuses, case outcomes, and debt, with the versioned
+  `rack.parity_report` `a0` JSON contract. `rack report` adds a PARITY section
+  with the implementation grid, per-test case outcomes, and the debt view.
 - Accept a `[[subtests.code_under_test]]` array of tables so one subtest can
   declare several modules; validation, coverage mapping, source hashing, and
   the HTML report handle each block.

@@ -22,6 +22,7 @@ This package has these reference documents:
   Draft: one test per file with a static declaration, shared cases for every
   implementation, independent expectations, and parity accounting.
 - [Audit Report Schema](./contracts/rack_audit_report.a0.schema.json)
+- [Parity Report Schema](./contracts/rack_parity_report.a0.schema.json)
   Defines the versioned JSON contract emitted by `rack audit --format json`.
 
 For a first read, start with:

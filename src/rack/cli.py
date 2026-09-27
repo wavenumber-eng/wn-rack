@@ -62,6 +62,9 @@ from rack._version import __version__
 from rack.accounting import rack_row
 from rack.audit_cli import cmd_audit
 from rack.declarations import manifest_entries
+from rack.parity import build_parity
+from rack.parity_cli import cmd_parity
+from rack.parity_html import render_parity_html
 from rack.parser import build_parser
 from rack.progress import build_progress_environment, make_run_id
 from rack.progress_cli import (
@@ -2695,6 +2698,7 @@ def generate_html_report(summary: dict) -> str:
 
     # Build inventory section (RACK-041)
     inventory_html = _generate_inventory_section()
+    parity_html = render_parity_html(build_parity(TESTS_DIR, RESULTS_DIR, get_strata()))
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -3191,6 +3195,8 @@ def generate_html_report(summary: dict) -> str:
     </div>
 
     {staleness_summary_html}
+
+    {parity_html}
 
     {inventory_html}
 
@@ -3856,6 +3862,8 @@ def main(argv: list[str] | None = None):
         return cmd_progress(args)
     elif args.command == "audit":
         return cmd_audit(args, TESTS_DIR)
+    elif args.command == "parity":
+        return cmd_parity(args, TESTS_DIR, RESULTS_DIR, get_strata())
     elif args.command == "version":
         return cmd_version(args)
     elif args.command == "new":

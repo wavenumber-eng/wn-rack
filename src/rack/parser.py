@@ -25,6 +25,7 @@ Examples:
   rack status           Show last run status
   rack report           Generate HTML report
   rack audit            Audit manifest/test-suite drift
+  rack parity           Account implementations, cases, and debt
   rack new stratum L2_roundtrip       Create new stratum
   rack new subtest L2 003 my_test     Create new subtest
         """,
@@ -64,6 +65,11 @@ Examples:
     audit_parser.add_argument("--strict", action="store_true", help="Fail on missing inventory metadata")
     audit_parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
     audit_parser.add_argument("--signoff-stratum", action="append", help="Required signoff stratum")
+
+    parity_parser = subparsers.add_parser("parity", help="Account implementation parity and debt")
+    parity_parser.add_argument("stratum", nargs="?", help="Optional stratum to account")
+    parity_parser.add_argument("--by", choices=["stratum", "concern"], default="stratum")
+    parity_parser.add_argument("--format", choices=["text", "json"], default="text")
 
     version_parser = subparsers.add_parser("version", help="Print version information")
     version_parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format")

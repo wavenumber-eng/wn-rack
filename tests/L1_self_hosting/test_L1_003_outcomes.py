@@ -50,10 +50,13 @@ def test_deferral_matches_only_the_exact_declared_differences() -> None:
 
     assert classify([Difference(("seconds",), "value", 5400, 5399)], declared)[0] == DEFERRED
     assert classify([Difference(("seconds",), "value", 5400, 5398)], declared)[0] == FAIL
-    assert classify(
-        [Difference(("seconds",), "value", 5400, 5399), Difference(("x",), "extra", None, 1)],
-        declared,
-    )[0] == FAIL
+    assert (
+        classify(
+            [Difference(("seconds",), "value", 5400, 5399), Difference(("x",), "extra", None, 1)],
+            declared,
+        )[0]
+        == FAIL
+    )
     outcome, detail = classify([], declared)
     assert outcome == FAIL and "remove its deferral" in detail
 

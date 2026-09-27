@@ -80,3 +80,24 @@ functions = ["rack_row"]
 [[subtests.code_under_test]]
 module = "rack.declarations"
 functions = ["declared_test_files", "load_declaration", "manifest_entries", "manifest_entry"]
+
+[[subtests]]
+id = "L1_006"
+file = "test_L1_006_parity.py"
+name = "Parity Accounting"
+description = "rack parity counts implementation statuses, case outcomes, and debt; the report renders the grid"
+concerns = ["self_hosting", "parity"]
+test_case_type = "synthetic"
+test_cases = "../fixtures/declared_suite"
+
+[[subtests.code_under_test]]
+module = "rack.parity"
+functions = ["build_parity", "collect_entries", "latest_rows", "format_parity_text"]
+
+[[subtests.code_under_test]]
+module = "rack.parity_html"
+functions = ["render_parity_html"]
+
+[[subtests.code_under_test]]
+module = "rack.parity_cli"
+functions = ["cmd_parity"]

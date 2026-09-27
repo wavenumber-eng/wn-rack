@@ -141,7 +141,8 @@ def test_cli_commands_read_declared_files() -> None:
     refreshed = json.loads((results / "strata" / "L0_units.json").read_text(encoding="utf-8"))
     (declared,) = [s for s in refreshed["subtests"] if s["file"] == "test_L0_001_parse_duration.py"]
     assert all("rack" in test for test in declared["tests"])
-    assert "Duration parsing" in (results / "report.html").read_text(encoding="utf-8")
+    report_html = (results / "report.html").read_text(encoding="utf-8")
+    assert "PARITY" in report_html and "Duration parsing" in report_html
 
     audited = rack("audit", "--signoff-stratum", "L0_units")
     assert audited.returncode == 0, audited.stdout + audited.stderr

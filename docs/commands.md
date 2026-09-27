@@ -230,6 +230,35 @@ Behavior:
 JSON output uses the versioned `rack.audit_report` `a0` contract. The schema is
 committed at `docs/contracts/rack_audit_report.a0.schema.json`.
 
+## `rack parity`
+
+Account implementation parity and test debt without running tests.
+
+Examples:
+
+```bash
+rack parity
+rack parity L1
+rack parity --by concern
+rack parity --format json
+```
+
+Behavior:
+
+- reads implementation statuses from self-declared test files and case
+  outcomes from the latest per-file results in `rack_results/subtests/`
+- per stratum (or concern) and implementation: tests implemented, planned,
+  suspended, and not applicable; for implemented tests, cases total, passing,
+  failing, deferred, errored, and not run
+- debt: legacy test files, deferred cases, planned and suspended
+  implementations, failing gating rows, and declaration audit findings
+- a catalog's case count is unknown until it runs and shows as `?`
+- `rack report` renders the same numbers as the PARITY section of
+  `report.html`
+
+JSON output uses the `rack.parity_report` `a0` contract at
+`docs/contracts/rack_parity_report.a0.schema.json`.
+
 ## `rack new stratum`
 
 Create a new stratum scaffold.

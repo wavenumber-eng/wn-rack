@@ -84,17 +84,29 @@ def test_valid_declaration_reads_statuses_and_deferrals(tmp_path: Path) -> None:
         ('"id": "L1_012"', '"id": "L1-12"', "id must match"),
         ('"id": "L1_012"', '"id": "L1_013"', "file name must start"),
         ("def run(case, impl):", "def test_other():\n    pass\n\n\ndef run(case, impl):", "test_*"),
-        ("def run(case, impl):", "def helper():\n    pass\n\n\ndef run(case, impl):", "only public"),
+        (
+            "def run(case, impl):",
+            "def helper():\n    pass\n\n\ndef run(case, impl):",
+            "only public",
+        ),
         ("def run(case, impl):", "def run(case):", "must take exactly"),
-        ("return impl.batch", "if impl.name == 'rust':\n        pass\n    return impl.batch", "branch"),
-        ('{"planned": "not ported yet", "issue": "#41"}', '{"planned": "not ported yet"}', "needs an issue"),
+        (
+            "return impl.batch",
+            "if impl.name == 'rust':\n        pass\n    return impl.batch",
+            "branch",
+        ),
+        (
+            '{"planned": "not ported yet", "issue": "#41"}',
+            '{"planned": "not ported yet"}',
+            "needs an issue",
+        ),
         ('{"suspended": "C++ port paused by policy"}', '"maybe"', "status must be"),
         ('"comparator": "exact"', '"compare": "exact"', "comparator is required"),
         ('"source": "contract"', '"source": "authority"', "needs expect.loader"),
         ('{"file": "vectors/L1_012_parse_duration.json"}', '{"glob": "*.json"}', "cases must be"),
         ('"deferred": {\n        "python"', '"deferred": {\n        "rust"', "only to implemented"),
         ('"kind": "value"', '"kind": "wrong"', "known kind"),
-        ('RACK = {', 'RACK = dict(**{', "pure literal"),
+        ("RACK = {", "RACK = dict(**{", "pure literal"),
     ],
 )
 def test_declaration_rules_fail_closed(tmp_path: Path, old: str, new: str, message: str) -> None:
@@ -170,7 +182,10 @@ def test_vector_file_loads_cases_and_decodes_bytes(tmp_path: Path) -> None:
     [
         (lambda p: p.update(schema="other"), "schema must be"),
         (lambda p: p.pop("provenance"), "provenance needs"),
-        (lambda p: p.update(provenance={"kind": "python_output", "source": "x"}), "provenance needs"),
+        (
+            lambda p: p.update(provenance={"kind": "python_output", "source": "x"}),
+            "provenance needs",
+        ),
         (lambda p: p.update(cases=[]), "non-empty cases"),
         (lambda p: p["cases"].append({"id": "blob"}), "unique"),
     ],
