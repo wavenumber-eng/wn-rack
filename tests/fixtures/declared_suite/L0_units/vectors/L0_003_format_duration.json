@@ -1,0 +1,9 @@
+{
+  "schema": "rack.cases.a0",
+  "observation": "FormattedDuration",
+  "provenance": {"kind": "specification", "source": "fixture format rules, hand-derived"},
+  "cases": [
+    {"id": "ninety_minutes", "inputs": {"seconds": 5400}},
+    {"id": "zero", "inputs": {"seconds": 0}}
+  ]
+}

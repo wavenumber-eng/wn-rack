@@ -392,6 +392,13 @@ services, and how to read the new reports.
   `<path>::L1_012[hours_and_minutes-rust]`.
 - New code lives in new modules (`declarations`, `harness`, `outcomes`,
   `plugin`, `parallel`), not in `cli.py`.
+- Registrations come from the nearest `rack.toml` above the test file and
+  resolve `module:attribute` with that suite root on `sys.path`.
+- Lane order is `[lanes] order`; without it, the order of the `[lanes.<name>]`
+  tables. A case lane outside that order fails collection.
+- The test module is imported through pytest's import mode only when a row
+  runs, so collection never imports test code.
+- Check rows (`"kind": "check"`) run under every `--impl` selection.
 
 ## Decisions (2026-09-27)
 

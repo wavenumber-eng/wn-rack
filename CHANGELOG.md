@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Add self-declared tests (in progress on the `altium-monkey` branch): a test
+  file carries a `RACK = {...}` literal and one `run(case, impl)` entry point.
+  `rack.declarations` reads and validates declarations and JSON vector files
+  statically; `rack.outcomes` provides exact typed comparison, exact-match
+  deferrals, and canonical digests.
+- Add the `rack.plugin` pytest plugin, auto-registered through the `pytest11`
+  entry point. It expands each self-declared file into one item per (case,
+  implementation), applies lanes and `--rack-impl` selection, and records the
+  Rack outcome and typed differences in `user_properties`. Files without a
+  top-level `RACK` assignment are untouched.
 - Accept a `[[subtests.code_under_test]]` array of tables so one subtest can
   declare several modules; validation, coverage mapping, source hashing, and
   the HTML report handle each block.

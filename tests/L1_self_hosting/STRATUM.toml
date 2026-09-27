@@ -47,3 +47,16 @@ test_case_type = "synthetic"
 [subtests.code_under_test]
 module = "rack.outcomes"
 functions = ["compare_exact", "classify", "canonical_digest", "difference_to_dict"]
+
+[[subtests]]
+id = "L1_004"
+file = "test_L1_004_plugin.py"
+name = "Self-Declared Test Plugin"
+description = "Expand self-declared files into case-by-implementation rows with lanes, selection, deferrals, checks, authority loaders, and budgets"
+concerns = ["self_hosting", "declarations", "outcomes"]
+test_case_type = "synthetic"
+test_cases = "../fixtures/declared_suite"
+
+[subtests.code_under_test]
+module = "rack.plugin"
+classes = ["RackFile", "RackItem", "RackCase", "Suite"]

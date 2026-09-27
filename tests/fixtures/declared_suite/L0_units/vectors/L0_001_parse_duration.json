@@ -1,0 +1,10 @@
+{
+  "schema": "rack.cases.a0",
+  "observation": "DurationResult",
+  "provenance": {"kind": "specification", "source": "fixture duration rules, hand-derived"},
+  "cases": [
+    {"id": "hours_and_minutes", "inputs": {"text": "1h30m"}, "expect": {"seconds": 5400}},
+    {"id": "fractional_hours", "inputs": {"text": "1.5h"}, "expect": {"seconds": 5400}},
+    {"id": "long_form", "lane": "full", "inputs": {"text": "2h3m4s"}, "expect": {"seconds": 7384}}
+  ]
+}
