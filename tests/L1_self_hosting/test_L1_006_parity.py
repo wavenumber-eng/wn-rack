@@ -90,14 +90,14 @@ def test_parity_counts_statuses_cases_and_debt(tmp_path: Path) -> None:
     assert report["type"] == "rack.parity_report" and report["version"] == "a0"
     assert report["implementations"] == ["python", "shadow", "rust", "cpp", "wasm"]
     assert at(report, "totals", "implementations", "python") == {
-        "tests": {"implemented": 2, "planned": 0, "suspended": 0, "not_applicable": 0},
-        "cases": {"pass": 2, "fail": 0, "deferred": 0, "error": 0, "total": 5, "not_run": 3},
+        "tests": {"implemented": 3, "planned": 0, "suspended": 0, "not_applicable": 0},
+        "cases": {"pass": 2, "fail": 0, "deferred": 0, "error": 0, "total": 7, "not_run": 5},
     }
     shadow = at(report, "totals", "implementations", "shadow", "cases")
-    assert (at(shadow, "fail"), at(shadow, "deferred"), at(shadow, "not_run")) == (1, 1, 3)
+    assert (at(shadow, "fail"), at(shadow, "deferred"), at(shadow, "not_run")) == (1, 1, 5)
     assert at(report, "totals", "implementations", "rust", "tests", "planned") == 1
     totals = at(report, "totals")
-    assert (at(totals, "declared"), at(totals, "legacy"), at(totals, "invalid")) == (3, 1, 0)
+    assert (at(totals, "declared"), at(totals, "legacy"), at(totals, "invalid")) == (4, 1, 0)
     assert at(totals, "checks") == {"files": 1, "pass": 1, "fail": 0, "deferred": 0, "error": 0}
 
     debt = at(report, "debt")
@@ -136,8 +136,8 @@ def test_parity_text_and_html(tmp_path: Path) -> None:
     )
 
     text = format_parity_text(report)
-    assert "L0_units: 3 declared, 1 legacy, 0 invalid" in text
-    assert "  shadow      2    0    0   0 |      5    0    1     1     0       3" in text
+    assert "L0_units: 4 declared, 1 legacy, 0 invalid" in text
+    assert "  shadow      3    0    0   0 |      7    0    1     1     0       5" in text
     assert "  deferred cases: 1 (#2 x1)" in text
     assert text.isascii()
 

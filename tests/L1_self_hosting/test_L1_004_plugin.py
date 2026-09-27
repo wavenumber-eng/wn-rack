@@ -103,6 +103,10 @@ def test_default_run_expands_cases_by_implementation(tmp_path: Path) -> None:
         "L0_003[ninety_minutes-shadow]": ("passed", "pass"),
         "L0_003[zero-python]": ("passed", "pass"),
         "L0_003[zero-shadow]": ("passed", "pass"),
+        "L0_006[ninety_minutes-python]": ("passed", "pass"),
+        "L0_006[ninety_minutes-shadow]": ("passed", "pass"),
+        "L0_006[zero-python]": ("passed", "pass"),
+        "L0_006[zero-shadow]": ("passed", "pass"),
         "test_legacy_style_still_runs": ("passed", ""),
     }
     assert "lane full" in rows["L0_001[long_form-python]"][2]

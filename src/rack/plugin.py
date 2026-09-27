@@ -7,7 +7,8 @@ the declared comparator. Legacy test files are left to pytest unchanged.
 
 Suite registrations (adapters, catalogs, comparators, loaders, services, lane
 order) come from the nearest ``rack.toml`` above the test file. Registered
-``module:attribute`` references resolve with that suite root on ``sys.path``.
+``module:attribute`` references resolve with that suite root appended to
+``sys.path``.
 """
 
 from __future__ import annotations
@@ -157,7 +158,9 @@ class Suite:
         if not attribute:
             raise LookupError(f"registration {reference!r} must be 'module:attribute'")
         if str(self.root) not in sys.path:
-            sys.path.insert(0, str(self.root))
+            # Appended, not prepended, so suite modules never shadow packages
+            # the suite's own conftest already put on the path.
+            sys.path.append(str(self.root))
         return getattr(importlib.import_module(module_name), attribute)
 
 
@@ -350,7 +353,9 @@ def _selected_implementations(config: pytest.Config) -> set[str] | None:
 
 def _expected(suite: Suite, declaration: TestDeclaration, case: Case, context: RackCase) -> object:
     expect = declaration.expect
-    if expect.get("source") == "authority":
+    # An authority always names a loader; a property may, when its expected
+    # value is computed from the case at run time instead of stored in it.
+    if isinstance(expect.get("loader"), str):
         return suite.registered("loaders", str(expect["loader"]))(context)
     if declaration.kind == "check" and case.expect is None:
         return []

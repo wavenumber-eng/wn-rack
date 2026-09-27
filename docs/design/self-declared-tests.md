@@ -198,7 +198,7 @@ rack run L1 --impl python,rust
 | --- | --- |
 | `authority` | A captured reference from an independent authority. The case locates it; `expect.loader` names the suite loader that reads it. |
 | `contract` | A value in the case, with the vector file's provenance. |
-| `property` | A relation computed from the case itself, such as save-then-reopen yielding the same observation. A property never stands alone as a writer's only evidence. |
+| `property` | A relation computed from the case itself, such as save-then-reopen yielding the same observation. The expected value is in the case, or an optional `expect.loader` computes it from the case at run time. A property never stands alone as a writer's only evidence. |
 | `budget` | Performance tests only (see below). |
 
 Comparators are registered by the suite; `exact` is built in. A comparator
@@ -400,7 +400,7 @@ services, and how to read the new reports.
 - New code lives in new modules (`declarations`, `harness`, `outcomes`,
   `plugin`, `parallel`), not in `cli.py`.
 - Registrations come from the nearest `rack.toml` above the test file and
-  resolve `module:attribute` with that suite root on `sys.path`.
+  resolve `module:attribute` with that suite root appended to `sys.path`.
 - Lane order is `[lanes] order`; without it, the order of the `[lanes.<name>]`
   tables. A case lane outside that order fails collection.
 - The test module is imported through pytest's import mode only when a row
