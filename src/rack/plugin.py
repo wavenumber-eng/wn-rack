@@ -19,7 +19,7 @@ import re
 import sys
 import time
 import tomllib
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Generator, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -73,6 +73,20 @@ def pytest_configure(config: pytest.Config) -> None:
 def pytest_unconfigure(config: pytest.Config) -> None:
     for suite in config.stash.get(_SUITES_KEY, {}).values():
         suite.close()
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[None]
+) -> Generator[None, pytest.TestReport, pytest.TestReport]:
+    report = yield
+    # A suite's own skip marker (for example a language selection flag) ends
+    # the row before Rack sees it; record that skip as the row's outcome.
+    if isinstance(item, RackItem) and report.skipped and not item.recorded_outcome():
+        longrepr = report.longrepr
+        detail = str(longrepr[2]) if isinstance(longrepr, tuple) else str(longrepr)
+        item.skip_recorded(detail.removeprefix("Skipped: "))
+    return report
 
 
 def pytest_pycollect_makemodule(
@@ -193,7 +207,14 @@ class RackFile(pytest.Module):
                 )
                 if status.name in markers:
                     item.add_marker(getattr(pytest.mark, status.name))
+                reason = _skip_reason(self.config, suite, case, status)
+                if reason is not None:
+                    item.skip_with(*reason)
                 yield item
+
+
+class RackFailure(AssertionError):
+    """A row's observation differs from its expectation."""
 
 
 class RackItem(pytest.Item):
@@ -216,12 +237,16 @@ class RackItem(pytest.Item):
         self.add_marker(pytest.mark.rack_implementation(status.name))
         self._record(outcome="")
 
-    def setup(self) -> None:
-        reason = _skip_reason(self.config, self.suite, self.case, self.status)
-        if reason is not None:
-            outcome, detail = reason
-            self._record(outcome=outcome, detail=detail)
-            pytest.skip(f"{outcome}: {detail}")
+    def skip_with(self, outcome: str, detail: str) -> None:
+        """Skip this row at collection so pytest reports the test file's location."""
+        self._record(outcome=outcome, detail=detail)
+        self.add_marker(pytest.mark.skip(reason=f"{outcome}: {detail}"))
+
+    def skip_recorded(self, detail: str) -> None:
+        self._record(outcome=SKIPPED, detail=detail)
+
+    def recorded_outcome(self) -> str:
+        return str(dict(self.user_properties).get("rack_outcome", ""))
 
     def runtest(self) -> None:
         try:
@@ -237,6 +262,17 @@ class RackItem(pytest.Item):
         outcome, detail = classify(differences, deferred)
         self._record(outcome=outcome, detail=detail, differences=differences)
         self._report(outcome, detail, differences)
+
+    def repr_failure(
+        self,
+        excinfo: pytest.ExceptionInfo[BaseException],
+        style: Any = None,
+    ) -> str | Any:
+        # A comparison failure is fully described by its differences; plugin
+        # frames would only hide them. Errors keep their traceback.
+        if isinstance(excinfo.value, RackFailure):
+            return f"{self.declaration.id} {self.case.id} [{self.status.name}]: {excinfo.value}"
+        return super().repr_failure(excinfo, style)
 
     def reportinfo(self) -> tuple[Path, int, str]:
         return self.path, 0, self.name
@@ -292,7 +328,7 @@ class RackItem(pytest.Item):
             f"  {list(d.path)} {d.kind}: expected={d.expected!r} actual={d.actual!r}"
             for d in differences[:20]
         ]
-        raise AssertionError("\n".join(lines))
+        raise RackFailure("\n".join(lines))
 
     def _issue(self) -> str:
         return self.declaration.deferred_issues.get(self.status.name, {}).get(self.case.id, "")

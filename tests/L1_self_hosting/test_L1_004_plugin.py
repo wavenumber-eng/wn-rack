@@ -41,6 +41,7 @@ def run_suite(
             "-p",
             "no:cacheprovider",
             "-q",
+            "-rs",
             "--json-report",
             f"--json-report-file={report}",
             *args,
@@ -113,6 +114,29 @@ def test_default_run_expands_cases_by_implementation(tmp_path: Path) -> None:
     assert rows["L0_001[hours_and_minutes-rust]"][2] == "not ported yet"
 
 
+def test_suite_skip_markers_are_recorded_as_skipped_rows(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    (suite / "conftest.py").write_text(
+        "import pytest\n\n\n"
+        "def pytest_collection_modifyitems(config, items):\n"
+        "    for item in items:\n"
+        "        if item.get_closest_marker('shadow_off') or item.name.endswith('-shadow]'):\n"
+        "            item.add_marker(pytest.mark.skip(reason='shadow disabled by suite'))\n",
+        encoding="utf-8",
+    )
+
+    result, rows = run_suite(suite)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert rows["L0_001[hours_and_minutes-shadow]"] == (
+        "skipped",
+        "skipped",
+        "shadow disabled by suite",
+    )
+    skip_lines = [line for line in result.stdout.splitlines() if line.startswith("SKIPPED")]
+    assert skip_lines and not any("plugin.py" in line for line in skip_lines)
+
+
 def test_lane_and_implementation_selection(tmp_path: Path) -> None:
     result, rows = run_suite(copy_suite(tmp_path), "--rack-impl", "shadow,rust", lane="full")
 
@@ -167,6 +191,8 @@ def test_failures_carry_typed_differences(tmp_path: Path) -> None:
         {"path": ["seconds"], "kind": "value", "expected": 5401, "actual": 5400}
     ]
     assert "['seconds'] value: expected=5401 actual=5400" in result.stdout
+    assert "L0_001 hours_and_minutes [python]: 1 difference(s)" in result.stdout
+    assert "plugin.py" not in result.stdout
 
 
 def test_invalid_declarations_fail_collection(tmp_path: Path) -> None:
