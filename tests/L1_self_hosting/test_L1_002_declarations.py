@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from rack.code_refs import check_code_ref
+from rack.code_refs import check_code_ref, declaration_code_problems
 from rack.declarations import (
     CodeRef,
     DeclarationError,
@@ -295,10 +295,39 @@ def write_project(tmp_path: Path) -> Path:
     (crate / "Cargo.toml").write_text('[package]\nname = "clock-work"\n', encoding="utf-8")
     (crate / "src" / "durations.rs").write_text(RUST_MODULE, encoding="utf-8")
     (crate / "src" / "lib.rs").write_text("pub mod durations;\n", encoding="utf-8")
+    cpp = tmp_path / "src" / "cpp" / "src" / "durations.cpp"
+    cpp.parent.mkdir(parents=True)
+    cpp.write_text(CPP_MODULE, encoding="utf-8")
     return tmp_path
 
 
+CPP_MODULE = """#include "durations.h"
+
+namespace clockwork::durations
+{
+namespace
+{
+int helper() { return 0; }
+} // namespace
+
+std::uint64_t parse_duration(std::string_view text)
+{
+    return static_cast<std::uint64_t>(helper() + to_seconds(text));
+}
+
+void Parser::parse()
+{
+    const auto seconds = parse_duration("1h");
+}
+
+// int commented_out(int x) { return x; }
+/* int block_commented(int x) { return x; } */
+} // namespace clockwork::durations
+"""
+
+
 PY = "src/py/clockwork/durations.py"
+CPP = "src/cpp/src/durations.cpp"
 RS = "src/rs/clock-work/src/durations.rs"
 
 
@@ -319,6 +348,15 @@ RS = "src/rs/clock-work/src/durations.rs"
         (CodeRef(RS, "other_crate::durations", "parse_duration"), "is not in crate other_crate"),
         (CodeRef("src/rs/clock-work/src/lib.rs", "clock_work", "parse_duration"), "defines no fn"),
         (CodeRef("src/rs/clock-work/Cargo.toml", "clock_work", "x"), "no static check for '.toml'"),
+        (CodeRef(CPP, "clockwork::durations", "parse_duration"), None),
+        (CodeRef(CPP, "clockwork::durations", "Parser::parse"), None),
+        (CodeRef(CPP, "clockwork::timing", "parse_duration"), "does not open namespace"),
+        (CodeRef(CPP, "clockwork::durations", "seconds_between"), "defines no seconds_between"),
+        (CodeRef(CPP, "clockwork::durations", "commented_out"), "defines no commented_out"),
+        (CodeRef(CPP, "clockwork::durations", "to_seconds"), "defines no to_seconds"),
+        (CodeRef(CPP, "clockwork::durations", "helper"), None),
+        (CodeRef(CPP, "clockwork::durations", "block_commented"), "defines no block_commented"),
+        (CodeRef(CPP, "clockwork::durations", "Timer::parse"), "defines no Timer::parse"),
     ],
 )
 def test_code_refs_resolve_by_reading_the_declared_file(
@@ -330,3 +368,23 @@ def test_code_refs_resolve_by_reading_the_declared_file(
         assert result is None
     else:
         assert result is not None and problem in result
+
+
+def test_suspended_code_is_verified_and_planned_code_is_not(tmp_path: Path) -> None:
+    project = write_project(tmp_path / "project")
+    source = VALID.replace(
+        '{"status": "suspended", "reason": "C++ port paused by policy"}',
+        '{"status": "suspended", "reason": "C++ port paused by policy", "code": ['
+        '{"file": "src/cpp/src/durations.cpp", "module": "clockwork::durations", '
+        '"function": "parse_seconds"}]}',
+    ).replace(
+        '{"status": "planned", "reason": "not ported yet", "issue": "#41"}',
+        '{"status": "planned", "reason": "not ported yet", "issue": "#41", "code": ['
+        '{"file": "src/rs/none.rs", "module": "none", "function": "later"}]}',
+    )
+    declaration = read_declaration(write_test(tmp_path, source))
+
+    problems = declaration_code_problems(project, declaration)
+
+    assert [problem.split(":")[0] for problem in problems] == ["python", "cpp"]
+    assert "defines no parse_seconds" in problems[1]

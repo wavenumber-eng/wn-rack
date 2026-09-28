@@ -7,7 +7,8 @@
   `{"status": ..., "reason": ..., "issue": ..., "code": [...]}`. Implemented
   implementations declare the code they exercise as `file`, `module`, and
   `function`; `rack audit` and collection verify each entry by reading only
-  that file (Python and Rust checkers; other file types fail).
+  that file (Python, Rust, and C++ checkers; other file types fail).
+  Suspended implementations that list code are verified the same way.
 - `rack audit` reports every failing declaration requirement, tallies
   self-declared and without-`RACK` files per stratum plus test files outside
   any stratum, and fails files without `RACK` in strata that set

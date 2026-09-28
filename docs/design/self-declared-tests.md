@@ -133,8 +133,13 @@ Rules Rack enforces:
   every entry by reading only that file: the Python checker parses it and
   finds the definition; the Rust checker matches the module path to the file
   under its package's `src`, the crate to the package's `Cargo.toml`, and
-  finds the `fn`. Other file types fail. A wrong entry fails `rack audit`
-  (`unresolved_code`) and fails the test file's collection.
+  finds the `fn`; the C++ checker requires the file to open the declared
+  namespace (the `module`) and to define the function or `Type::method`.
+  Other file types fail. A wrong entry fails `rack audit` (`unresolved_code`)
+  and fails the test file's collection.
+- A `suspended` implementation lists its `code` while that code exists, and
+  Rack verifies it the same way, so suspended code cannot disappear or move
+  unnoticed. `planned` code is optional and unchecked; it may not exist yet.
 - No file may import from a test file. Shared helpers live in helper modules
   that contain no tests. `rack audit` checks imports statically.
 

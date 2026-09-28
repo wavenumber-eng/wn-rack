@@ -4,6 +4,7 @@ Each code entry names a file relative to the suite's project root, the module
 that file is, and a function the file defines. A check reads only that file
 (and, for Rust, the package's Cargo.toml): nothing is imported, built, or run.
 The file extension selects the checker, and an extension without one fails.
+For C++ the module is the namespace the file opens.
 """
 
 from __future__ import annotations
@@ -30,15 +31,16 @@ def project_root(suite_root: Path, config: Mapping[str, object]) -> Path:
     return suite_root.parent
 
 
-def declaration_code_problems(root: Path, declaration: TestDeclaration) -> list[str]:
-    """Problems with the code each implemented implementation declares.
+# Suspended code still exists and must stay where the declaration says; planned
+# code may not exist yet, so it is not checked.
+VERIFIED_STATUSES = ("implemented", "suspended")
 
-    Planned and suspended implementations are not checked: their code may not
-    exist yet, and nothing runs it.
-    """
+
+def declaration_code_problems(root: Path, declaration: TestDeclaration) -> list[str]:
+    """Problems with the code that implemented and suspended implementations declare."""
     problems: list[str] = []
     for entry in declaration.implementations:
-        if entry.status != "implemented":
+        if entry.status not in VERIFIED_STATUSES:
             continue
         for ref in entry.code:
             problem = check_code_ref(root, ref)
@@ -120,6 +122,38 @@ def _rust_module_problem(path: Path, ref: CodeRef, crate: str, modules: list[str
     return None
 
 
+def _check_cpp(path: Path, ref: CodeRef) -> str | None:
+    source = _cpp_source(*_stamp(path))
+    if not _opens_namespace(source, ref.module.split("::")):
+        return f"{ref.file} does not open namespace {ref.module}"
+    owner, _, name = ref.function.rpartition("::")
+    if owner:
+        # A qualified name outside a call site is a member definition.
+        pattern = rf"\b{re.escape(owner)}::{re.escape(name)}\s*\("
+    else:
+        # A return type before the name, at the start of a line, is a
+        # declaration or definition rather than a call.
+        pattern = (
+            rf"^(?![ \t]*(?:return|co_return|else|case|throw|delete|new)\b)"
+            rf"[ \t]*[\w:<>,*& \t]+?[\s*&]{re.escape(name)}\s*\("
+        )
+    if not re.search(pattern, source, re.MULTILINE):
+        return f"{ref.file} defines no {ref.function}"
+    return None
+
+
+def _opens_namespace(source: str, segments: list[str]) -> bool:
+    if re.search(rf"\bnamespace\s+{re.escape('::'.join(segments))}\s*\{{", source):
+        return True
+    position = 0
+    for segment in segments:
+        found = re.compile(rf"\bnamespace\s+{re.escape(segment)}\s*\{{").search(source, position)
+        if found is None:
+            return False
+        position = found.end()
+    return True
+
+
 def _stamp(path: Path) -> tuple[str, int, int]:
     stat = path.stat()
     return str(path.resolve()), stat.st_mtime_ns, stat.st_size
@@ -139,6 +173,14 @@ def _rust_source(path: str, _mtime_ns: int, _size: int) -> str:
     return re.sub(r"//[^\n]*", "", Path(path).read_text(encoding="utf-8"))
 
 
+@functools.lru_cache(maxsize=4096)
+def _cpp_source(path: str, _mtime_ns: int, _size: int) -> str:
+    # Comments are dropped so commented-out code does not count.
+    source = Path(path).read_text(encoding="utf-8", errors="replace")
+    source = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
+    return re.sub(r"//[^\n]*", "", source)
+
+
 @functools.lru_cache(maxsize=1024)
 def _crate_names(path: str, _mtime_ns: int, _size: int) -> frozenset[str]:
     with Path(path).open("rb") as handle:
@@ -154,4 +196,8 @@ def _crate_names(path: str, _mtime_ns: int, _size: int) -> frozenset[str]:
 _CHECKERS: dict[str, Callable[[Path, CodeRef], str | None]] = {
     ".py": _check_python,
     ".rs": _check_rust,
+    ".cpp": _check_cpp,
+    ".cc": _check_cpp,
+    ".h": _check_cpp,
+    ".hpp": _check_cpp,
 }
