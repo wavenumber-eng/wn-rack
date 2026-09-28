@@ -33,6 +33,7 @@ from rack.declarations import (
     Difference,
     ImplementationStatus,
     TestDeclaration,
+    declaration_form,
     is_self_declared,
     load_vector_file,
     read_declaration,
@@ -94,8 +95,11 @@ def pytest_runtest_makereport(
 def pytest_pycollect_makemodule(
     module_path: Path, parent: pytest.Collector
 ) -> pytest.Module | None:
+    # Only run(case, impl) files are driven by Rack; a pytest-form file with a
+    # RACK header is collected by pytest itself.
     if module_path.name.startswith("test_") and is_self_declared(module_path):
-        return RackFile.from_parent(parent, path=module_path)
+        if _adapter_form(module_path):
+            return RackFile.from_parent(parent, path=module_path)
     return None
 
 
@@ -449,6 +453,13 @@ def _check_lanes(suite: Suite, declaration: TestDeclaration, cases: tuple[Case, 
         raise DeclarationError(
             f"{declaration.path.name}: case lanes {unknown} are not in the suite lanes {list(lanes)}"
         )
+
+
+def _adapter_form(path: Path) -> bool:
+    import ast
+
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    return declaration_form(tree) == "adapter"
 
 
 def _check_code(suite: Suite, declaration: TestDeclaration) -> None:

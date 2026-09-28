@@ -205,7 +205,7 @@ def trace_test(declaration: TestDeclaration, root: Path, registry: Registry) -> 
 
 def trace_declaration(declaration: TestDeclaration) -> TestTrace | None:
     """Trace a test through its suite's registry; None for checks."""
-    if declaration.kind == "check":
+    if declaration.kind == "check" or declaration.form == "pytest":
         return None
     root, registry = registry_for(declaration.path)
     return trace_test(declaration, root, registry)

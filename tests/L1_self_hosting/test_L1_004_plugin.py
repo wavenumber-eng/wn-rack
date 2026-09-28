@@ -288,3 +288,54 @@ def test_budget_expectation_measures_run_time(tmp_path: Path) -> None:
     assert rows["L0_005[hours_and_minutes-python]"][:2] == ("passed", "pass")
     assert rows["L0_005[hours_and_minutes-shadow]"][:2] == ("failed", "fail")
     assert result.returncode == 1
+
+
+PYTEST_FORM_TEST = """import json
+from pathlib import Path
+
+import pytest
+from suite_support import durations
+
+RACK = {
+    "id": "L0_007",
+    "title": "Duration parsing, plain pytest",
+    "purpose": {
+        "checks": "Parsing duration strings returns the whole seconds they spell.",
+        "because": "Callers schedule work from these seconds; a wrong parse shifts every deadline.",
+    },
+    "resources": ["vectors/L0_001_parse_duration.json"],
+    "implementations": {
+        "python": {"status": "implemented"},
+        "shadow": {"status": "implemented"},
+    },
+}
+
+VECTORS = Path(__file__).parent / "vectors" / "L0_001_parse_duration.json"
+CASES = json.loads(VECTORS.read_text(encoding="utf-8"))["cases"]
+
+IMPLEMENTATIONS = {
+    "python": durations.parse_duration,
+    "shadow": durations.parse_duration_shadow,
+}
+
+
+@pytest.mark.parametrize("implementation", IMPLEMENTATIONS)
+@pytest.mark.parametrize("case", CASES, ids=[case["id"] for case in CASES])
+def test_parse_duration(case, implementation):
+    seconds = IMPLEMENTATIONS[implementation](case["inputs"]["text"])
+    assert seconds == case["expect"]["seconds"]
+"""
+
+
+def test_pytest_form_files_are_collected_by_pytest_not_rack(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    (suite / "L0_units" / "test_L0_007_plain_parse.py").write_text(
+        PYTEST_FORM_TEST, encoding="utf-8"
+    )
+
+    result, rows = run_suite(suite)
+
+    # Plain pytest ids, plain assert failures: Rack is not in the loop.
+    assert rows["test_parse_duration[hours_and_minutes-shadow]"][0] == "passed"
+    assert rows["test_parse_duration[fractional_hours-shadow]"][0] == "failed"
+    assert "assert 3600 == 5400" in result.stdout

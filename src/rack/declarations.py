@@ -44,6 +44,7 @@ REQUIREMENTS = (
     "operations",
     "expect",
     "cases_ref",
+    "resources",
     "deferrals",
 )
 
@@ -59,6 +60,7 @@ _KNOWN_KEYS = frozenset(
         "implementations",
         "operations",
         "purpose",
+        "resources",
         "deferred",
         "objectives",
         "approach",
@@ -112,6 +114,9 @@ class TestDeclaration:
     because: str
     raw: Mapping[str, object]
     implementations: tuple[ImplementationStatus, ...] = ()
+    # "pytest": the file is an ordinary pytest test (one test_* function) and
+    # Rack only reads its header. "adapter": run(case, impl) driven by Rack.
+    form: str = "adapter"
     deferred: Mapping[str, Mapping[str, tuple[Difference, ...]]] = field(default_factory=dict)
     deferred_issues: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
 
@@ -123,6 +128,11 @@ class TestDeclaration:
     def cases(self) -> Mapping[str, object]:
         value = self.raw.get("cases", {})
         return value if isinstance(value, Mapping) else {}
+
+    @property
+    def resources(self) -> tuple[str, ...]:
+        """Files the test reads (vectors, captures, corpus paths), as written in RACK."""
+        return tuple(str(value) for value in _as_list(self.raw.get("resources", [])))
 
     @property
     def operations(self) -> tuple[str, ...]:
@@ -285,6 +295,7 @@ def read_declaration(path: Path) -> TestDeclaration:
         id=cast(str, results["id"]),
         title=str(raw.get("title", "")),
         kind=cast(str, results["kind"]),
+        form=cast(str, results["entry_point"]),
         checks=checks,
         because=because,
         raw=raw,
@@ -309,6 +320,7 @@ def _evaluate(path: Path) -> tuple[dict[str, object], dict[str, str]]:
     except DeclarationError as error:
         return {}, {"rack_literal": str(error)}
     kind = str(raw.get("kind", "test"))
+    pytest_form = declaration_form(tree) == "pytest"
     steps: list[tuple[str, Callable[[], object]]] = [
         ("keys", lambda: _check_keys(path, raw)),
         ("purpose", lambda: _parse_purpose(path, raw)),
@@ -316,9 +328,10 @@ def _evaluate(path: Path) -> tuple[dict[str, object], dict[str, str]]:
         ("kind", lambda: _check_kind(path, kind)),
         ("entry_point", lambda: _check_entry_point(path, tree)),
         ("implementations", lambda: _parse_implementations(path, raw, kind)),
-        ("operations", lambda: _check_operations(path, raw, kind)),
-        ("expect", lambda: _check_expect(path, raw)),
-        ("cases_ref", lambda: _check_cases_ref(path, raw)),
+        ("operations", lambda: _check_operations(path, raw, kind, pytest_form)),
+        ("expect", lambda: _check_expect(path, raw, pytest_form)),
+        ("cases_ref", lambda: _check_cases_ref(path, raw, pytest_form)),
+        ("resources", lambda: _check_resources(path, raw)),
     ]
     results: dict[str, object] = {"raw": raw}
     problems: dict[str, str] = {}
@@ -468,7 +481,36 @@ def _check_id(path: Path, raw: Mapping[str, object]) -> str:
     return test_id
 
 
-def _check_entry_point(path: Path, tree: ast.Module) -> None:
+def declaration_form(tree: ast.Module) -> str:
+    """``pytest`` when the file has no ``run`` function, else ``adapter``."""
+    names = {
+        node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    return "adapter" if "run" in names else "pytest"
+
+
+def _check_entry_point(path: Path, tree: ast.Module) -> str:
+    if declaration_form(tree) == "pytest":
+        return _check_pytest_entry_point(path, tree)
+    _check_adapter_entry_point(path, tree)
+    return "adapter"
+
+
+def _check_pytest_entry_point(path: Path, tree: ast.Module) -> str:
+    tests = [
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
+    ]
+    if len(tests) != 1:
+        raise DeclarationError(
+            f"{path.name}: a test file has exactly one test_* function (found {tests})"
+        )
+    return "pytest"
+
+
+def _check_adapter_entry_point(path: Path, tree: ast.Module) -> None:
     run = _single_run_function(path, tree)
     names = [argument.arg for argument in run.args.args]
     if names != ["case", "impl"]:
@@ -533,11 +575,11 @@ def _parse_status(path: Path, name: str, entry: object) -> ImplementationStatus:
     return ImplementationStatus(name, status, reason, issue)
 
 
-def _check_operations(path: Path, raw: Mapping[str, object], kind: str) -> None:
+def _check_operations(path: Path, raw: Mapping[str, object], kind: str, pytest_form: bool) -> None:
     value = raw.get("operations")
-    if kind == "check":
+    if kind == "check" or pytest_form:
         if value is not None:
-            raise DeclarationError(f"{path.name}: a check sends no operations")
+            raise DeclarationError(f"{path.name}: operations belong only to run(case, impl) tests")
         return
     if (
         not isinstance(value, list)
@@ -554,8 +596,9 @@ def _text(value: object) -> str:
     return value if isinstance(value, str) else ""
 
 
-def _check_expect(path: Path, raw: Mapping[str, object]) -> None:
-    if raw.get("kind", "test") == "check":
+def _check_expect(path: Path, raw: Mapping[str, object], pytest_form: bool) -> None:
+    # A pytest-form test does its own comparison; Rack only reads its header.
+    if raw.get("kind", "test") == "check" or (pytest_form and "expect" not in raw):
         return
     expect = raw.get("expect")
     if not isinstance(expect, dict) or expect.get("source") not in EXPECT_SOURCES:
@@ -577,7 +620,17 @@ def _check_budget(path: Path, expect: Mapping[str, object]) -> None:
         raise DeclarationError(f"{path.name}: max_ratio needs relative_to")
 
 
-def _check_cases_ref(path: Path, raw: Mapping[str, object]) -> None:
+def _check_resources(path: Path, raw: Mapping[str, object]) -> None:
+    value = raw.get("resources", [])
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item.strip() for item in value
+    ):
+        raise DeclarationError(f"{path.name}: resources must be a list of paths")
+
+
+def _check_cases_ref(path: Path, raw: Mapping[str, object], pytest_form: bool) -> None:
+    if pytest_form and "cases" not in raw:
+        return
     cases = raw.get("cases")
     if (
         not isinstance(cases, dict)

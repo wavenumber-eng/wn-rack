@@ -169,7 +169,7 @@ def test_checks_send_no_operations(tmp_path: Path) -> None:
         source.replace('"kind": "check",', '"kind": "check",\n    "operations": ["X"],')
     )
 
-    with pytest.raises(DeclarationError, match="a check sends no operations"):
+    with pytest.raises(DeclarationError, match="operations belong only to run"):
         read_declaration(path)
 
 

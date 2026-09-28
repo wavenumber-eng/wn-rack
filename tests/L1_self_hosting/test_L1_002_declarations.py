@@ -372,3 +372,66 @@ def test_code_refs_report_the_definition_line(tmp_path: Path) -> None:
     assert (
         locate_code_ref(project, CodeRef(CPP, "clockwork::durations", "Parser::parse")).line == 15
     )
+
+
+PYTEST_FORM = """import pytest
+
+RACK = {
+    "id": "L1_012",
+    "title": "Duration parsing",
+    "purpose": {
+        "checks": "Duration strings parse to whole seconds.",
+        "because": "Schedules built on a wrong parse miss every deadline.",
+    },
+    "resources": ["vectors/L1_012_parse_duration.json"],
+    "implementations": {
+        "python": {"status": "implemented"},
+        "cpp": {"status": "suspended", "reason": "C++ port paused by policy"},
+    },
+}
+
+
+def python_parse(text):
+    return 0
+
+
+@pytest.mark.parametrize("implementation", ["python"])
+def test_parse_duration(implementation):
+    assert python_parse("0s") == 0
+"""
+
+
+def test_pytest_form_is_an_ordinary_test_with_a_header(tmp_path: Path) -> None:
+    declaration = read_declaration(write_test(tmp_path, PYTEST_FORM))
+
+    assert declaration.form == "pytest"
+    assert declaration.resources == ("vectors/L1_012_parse_duration.json",)
+    assert [(s.name, s.status) for s in declaration.implementations] == [
+        ("python", "implemented"),
+        ("cpp", "suspended"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        (
+            "def test_parse_duration",
+            "def test_other():\n    pass\n\n\ndef test_parse_duration",
+            "exactly one test_",
+        ),
+        (
+            '"resources": [',
+            '"operations": ["Parse"],\n    "resources": [',
+            "operations belong only to run",
+        ),
+        (
+            '"resources": ["vectors/L1_012_parse_duration.json"]',
+            '"resources": "vectors"',
+            "resources must be a list",
+        ),
+    ],
+)
+def test_pytest_form_rules_fail_closed(tmp_path: Path, old: str, new: str, message: str) -> None:
+    with pytest.raises(DeclarationError, match=message):
+        read_declaration(write_test(tmp_path, PYTEST_FORM.replace(old, new, 1)))
