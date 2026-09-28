@@ -81,7 +81,7 @@
     "test": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["stratum", "file", "id", "title", "kind", "concerns", "case_count", "cells"],
+      "required": ["stratum", "file", "id", "title", "kind", "concerns", "purpose", "case_count", "cells"],
       "properties": {
         "stratum": { "type": "string", "minLength": 1 },
         "file": { "type": "string", "minLength": 1 },
@@ -89,16 +89,37 @@
         "title": { "type": "string" },
         "kind": { "enum": ["test", "check", "legacy", "invalid"] },
         "concerns": { "type": "array", "items": { "type": "string" } },
+        "purpose": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "checks": { "type": "string", "minLength": 1 },
+            "because": { "type": "string", "minLength": 1 }
+          }
+        },
         "case_count": { "$ref": "#/$defs/optional_count" },
         "cells": {
           "type": "object",
           "additionalProperties": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["status", "note", "outcomes", "cases"],
+            "required": ["status", "note", "code", "outcomes", "cases"],
             "properties": {
               "status": { "type": "string" },
               "note": { "type": "string" },
+              "code": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["file", "module", "function"],
+                  "properties": {
+                    "file": { "type": "string", "minLength": 1 },
+                    "module": { "type": "string", "minLength": 1 },
+                    "function": { "type": "string", "minLength": 1 }
+                  }
+                }
+              },
               "outcomes": { "type": "object", "additionalProperties": { "$ref": "#/$defs/count" } },
               "cases": { "type": "object", "additionalProperties": { "type": "string" } }
             }

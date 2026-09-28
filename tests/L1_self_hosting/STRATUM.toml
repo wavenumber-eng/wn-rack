@@ -32,9 +32,13 @@ description = "Read and validate RACK declarations, entry points, statuses, defe
 concerns = ["self_hosting", "declarations"]
 test_case_type = "synthetic"
 
-[subtests.code_under_test]
+[[subtests.code_under_test]]
 module = "rack.declarations"
-functions = ["read_declaration", "load_vector_file", "validate_deferrals", "is_self_declared", "decode_value"]
+functions = ["read_declaration", "declaration_problems", "load_vector_file", "validate_deferrals", "is_self_declared", "decode_value"]
+
+[[subtests.code_under_test]]
+module = "rack.code_refs"
+functions = ["check_code_ref", "declaration_code_problems", "project_root"]
 
 [[subtests]]
 id = "L1_003"
@@ -76,6 +80,10 @@ module = "rack.audit"
 [[subtests.code_under_test]]
 module = "rack.accounting"
 functions = ["rack_row"]
+
+[[subtests.code_under_test]]
+module = "rack.declaration_tally"
+functions = ["tally_declarations", "outside_strata", "require_declared"]
 
 [[subtests.code_under_test]]
 module = "rack.declarations"

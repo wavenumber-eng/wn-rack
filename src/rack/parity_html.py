@@ -113,10 +113,32 @@ def _test_block(test: Mapping[str, object], implementations: Sequence[str]) -> s
             <span class="toggle-icon">&#9654;</span>
         </div>
         <div class="collapsible-content" style="padding: 8px;">
+            {_purpose(_mapping(test.get("purpose")))}
+            {_code_list(cells, columns)}
             {_case_table(cells, columns)}
         </div>
     </div>
     """
+
+
+def _purpose(purpose: Mapping[str, object]) -> str:
+    if not purpose:
+        return ""
+    return (
+        f"<p><strong>Checks:</strong> {escape(str(purpose.get('checks', '')))}<br>"
+        f"<strong>Because:</strong> {escape(str(purpose.get('because', '')))}</p>"
+    )
+
+
+def _code_list(cells: Mapping[str, object], columns: Sequence[str]) -> str:
+    items = [
+        f"<li>{escape(name)}: <span class='code-ref'>{escape(str(ref.get('module')))}."
+        f"{escape(str(ref.get('function')))}</span> "
+        f"<span class='file-path'>{escape(str(ref.get('file')))}</span></li>"
+        for name in columns
+        for ref in map(_mapping, _sequence(_mapping(cells.get(name)).get("code")))
+    ]
+    return f"<ul>{''.join(items)}</ul>" if items else ""
 
 
 def _cell_badge(cell: Mapping[str, object], case_count: object) -> str:

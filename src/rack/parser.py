@@ -71,6 +71,9 @@ Examples:
     audit_parser.add_argument("--strict", action="store_true", help="Fail on missing inventory metadata")
     audit_parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
     audit_parser.add_argument("--signoff-stratum", action="append", help="Required signoff stratum")
+    audit_parser.add_argument(
+        "--undeclared", action="store_true", help="List test files without a RACK declaration"
+    )
 
     parity_parser = subparsers.add_parser("parity", help="Account implementation parity and debt")
     parity_parser.add_argument("stratum", nargs="?", help="Optional stratum to account")

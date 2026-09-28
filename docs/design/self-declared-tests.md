@@ -55,26 +55,43 @@ way. Parity status is then a report over declarations and results.
 
 ## The test file
 
-A self-declared test file has a docstring, a `RACK` declaration, and one entry
-point, `run`. Example (a library with a Python reference and a Rust port):
+A self-declared test file has a `RACK` declaration and one entry point,
+`run`. Example (a library with a Python reference and a Rust port):
 
 ```python
-"""parse_duration converts "1h30m" style strings to seconds."""
-
 RACK = {
     "id": "L1_012",
     "title": "Duration parsing",
+    "purpose": {
+        "checks": "Duration strings such as 1h30m parse to whole seconds.",
+        "because": "Schedules built on a wrong parse miss every deadline.",
+    },
     "concerns": ["time.parse"],
-    "code_under_test": [
-        {"module": "clockwork.durations", "functions": ["parse_duration"]},
-    ],
     "cases": {"file": "vectors/L1_012_parse_duration.json"},
     "observation": "DurationResult",
     "expect": {"source": "contract", "comparator": "exact"},
     "implementations": {
-        "python": "implemented",
-        "rust": "implemented",
-        "cpp": {"suspended": "C++ port paused by project policy"},
+        "python": {
+            "status": "implemented",
+            "code": [
+                {
+                    "file": "src/py/clockwork/durations.py",
+                    "module": "clockwork.durations",
+                    "function": "parse_duration",
+                },
+            ],
+        },
+        "rust": {
+            "status": "implemented",
+            "code": [
+                {
+                    "file": "src/rs/clockwork/src/durations.rs",
+                    "module": "clockwork::durations",
+                    "function": "parse_duration",
+                },
+            ],
+        },
+        "cpp": {"status": "suspended", "reason": "C++ port paused by project policy"},
     },
     "deferred": {
         "rust": {
@@ -104,14 +121,36 @@ Rules Rack enforces:
 - `run(case, impl)` is the only public entry point. Small private helpers
   (`_name`) are allowed; `test_*` functions are not.
 - `run` must not branch on the implementation (no use of `impl.name`).
+- `purpose` is required: `checks` says what the test verifies and `because`
+  says what goes wrong if it breaks. Each needs at least three words, so a
+  reviewer can judge whether the test still earns its place.
+- Every implementation has `status` (`implemented`, `planned`, `suspended`,
+  `not_applicable`). Anything but `implemented` needs a `reason`; `planned`
+  also needs an `issue`.
+- An `implemented` implementation declares its `code`: each entry names a
+  `file` relative to the project root, the `module` that file is, and a
+  `function` (`Type.method` in Python, `Type::method` in Rust). Rack verifies
+  every entry by reading only that file: the Python checker parses it and
+  finds the definition; the Rust checker matches the module path to the file
+  under its package's `src`, the crate to the package's `Cargo.toml`, and
+  finds the `fn`. Other file types fail. A wrong entry fails `rack audit`
+  (`unresolved_code`) and fails the test file's collection.
 - No file may import from a test file. Shared helpers live in helper modules
   that contain no tests. `rack audit` checks imports statically.
 
 `STRATUM.toml` keeps stratum facts only (order, description, default concerns,
-parallel opt-in). Subtest entries for self-declared files are rejected, so each
-fact exists in one place. The declaration schema also carries the descriptive
-fields Rack already reports: `objectives`, `approach`, `test_case_type`,
-`progress`, and `runtime_profile`.
+parallel opt-in, and `require_declared` once every file is converted). Subtest
+entries for self-declared files are rejected, so each fact exists in one place.
+The declaration schema also carries the descriptive fields Rack already
+reports: `objectives`, `approach`, `test_case_type`, `progress`, and
+`runtime_profile`. Rack derives the legacy `code_under_test` view from the
+Python `code` entries.
+
+`rack audit` tallies every test file: self-declared or without `RACK` per
+stratum, the files failing each requirement, and test files outside any
+stratum's top level (which Rack otherwise never lists or audits). A stratum
+that sets `require_declared = true` fails the audit for any file without
+`RACK`, so a converted stratum cannot regress.
 
 ## The entry point contract
 

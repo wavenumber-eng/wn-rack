@@ -213,6 +213,7 @@ rack audit
 rack audit L0_foundation
 rack audit --strict
 rack audit --format json
+rack audit --undeclared
 ```
 
 Behavior:
@@ -234,12 +235,24 @@ Behavior:
 - rejects imports of a test module by a self-declared file, and imports of a
   self-declared test module by any file (`test_module_import`); imports between
   legacy test files are not checked
+- reports every failing declaration requirement separately
+  (`invalid_declaration`, message prefixed with the requirement)
+- checks each implemented implementation's declared `code` by reading the
+  named file (`unresolved_code`)
+- fails every file without `RACK` in a stratum whose `STRATUM.toml` sets
+  `require_declared = true` (`undeclared_test_file`)
 - requires the conventional `L99_signoff` stratum unless overridden with
   `--signoff-stratum`
 - `--strict` also fails missing `test_cases` and `test_case_type`
 
-JSON output uses the versioned `rack.audit_report` `a0` contract. The schema is
-committed at `docs/contracts/rack_audit_report.a0.schema.json`.
+After the failures, `rack audit` prints a tally: self-declared and
+without-`RACK` files per stratum, how many files fail each requirement (with
+their paths), and test files outside any stratum's top level. `--undeclared`
+also lists the files without `RACK`.
+
+JSON output uses the versioned `rack.audit_report` `a1` contract, which adds
+the `declarations` tally. The schema is committed at
+`docs/contracts/rack_audit_report.a1.schema.json`.
 
 ## `rack parity`
 

@@ -35,6 +35,7 @@ DECLARATION_AUDIT_CODES = frozenset(
         "invalid_cases",
         "invalid_declaration",
         "test_module_import",
+        "unresolved_code",
     }
 )
 
@@ -49,8 +50,10 @@ class TestEntry:
     title: str
     kind: str  # "test", "check", "legacy", or "invalid"
     concerns: tuple[str, ...]
+    purpose: Mapping[str, str] = field(default_factory=dict)  # checks and because
     statuses: Mapping[str, str] = field(default_factory=dict)
     notes: Mapping[str, str] = field(default_factory=dict)  # issue or reason per implementation
+    code: Mapping[str, tuple[dict[str, str], ...]] = field(default_factory=dict)
     deferred: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
     case_count: int | None = None
 
@@ -137,11 +140,19 @@ def _declared_entry(stratum: str, path: Path, default_concerns: tuple[str, ...])
         title=declaration.title,
         kind=declaration.kind,
         concerns=declaration.concerns or default_concerns,
+        purpose={"checks": declaration.checks, "because": declaration.because},
         statuses={entry.name: entry.status for entry in declaration.implementations},
         notes={
             entry.name: entry.issue or entry.reason
             for entry in declaration.implementations
             if entry.status != "implemented"
+        },
+        code={
+            entry.name: tuple(
+                {"file": ref.file, "module": ref.module, "function": ref.function}
+                for ref in entry.code
+            )
+            for entry in declaration.implementations
         },
         deferred=declaration.deferred_issues,
         case_count=_case_count(declaration),
@@ -306,6 +317,7 @@ def _test_detail(
         cells[name] = {
             "status": "implemented" if name == "check" else entry.statuses.get(name, ""),
             "note": entry.notes.get(name, ""),
+            "code": list(entry.code.get(name, ())),
             "outcomes": dict(Counter(row.outcome for row in own)),
             "cases": {row.case: row.outcome for row in own},
         }
@@ -316,6 +328,7 @@ def _test_detail(
         "title": entry.title,
         "kind": entry.kind,
         "concerns": list(entry.concerns),
+        "purpose": dict(entry.purpose),
         "case_count": entry.case_count,
         "cells": cells,
     }

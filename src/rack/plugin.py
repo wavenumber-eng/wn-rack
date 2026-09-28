@@ -26,6 +26,7 @@ from typing import Any
 
 import pytest
 
+from rack.code_refs import declaration_code_problems, project_root
 from rack.declarations import (
     Case,
     DeclarationError,
@@ -161,6 +162,9 @@ class Suite:
             raise LookupError(f"{table} entry {name!r} is not registered in rack.toml")
         return self._resolve(reference)
 
+    def project_root(self) -> Path:
+        return project_root(self.root, self.config)
+
     def close(self) -> None:
         for instance in (*self._adapters.values(), *self._services.values()):
             close = getattr(instance, "close", None)
@@ -192,6 +196,7 @@ class RackFile(pytest.Module):
             cases = _load_cases(suite, declaration)
             validate_deferrals(declaration, tuple(case.id for case in cases))
             _check_lanes(suite, declaration, cases)
+            _check_code(suite, declaration)
         except (DeclarationError, LookupError) as error:
             raise self.CollectError(str(error)) from error
         markers = _registered_markers(self.config)
@@ -443,6 +448,12 @@ def _check_lanes(suite: Suite, declaration: TestDeclaration, cases: tuple[Case, 
         raise DeclarationError(
             f"{declaration.path.name}: case lanes {unknown} are not in the suite lanes {list(lanes)}"
         )
+
+
+def _check_code(suite: Suite, declaration: TestDeclaration) -> None:
+    problems = declaration_code_problems(suite.project_root(), declaration)
+    if problems:
+        raise DeclarationError(f"{declaration.path.name}: " + "; ".join(problems))
 
 
 def _suite_for(config: pytest.Config, path: Path) -> Suite:

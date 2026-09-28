@@ -21,7 +21,7 @@ def test_audit_suite_passes_synchronized_suite(tmp_path: Path) -> None:
 
     assert report.passed
     assert report.to_json_data()["type"] == "rack.audit_report"
-    assert report.to_json_data()["version"] == "a0"
+    assert report.to_json_data()["version"] == "a1"
 
 
 def test_audit_suite_detects_manifest_drift(tmp_path: Path) -> None:
@@ -84,7 +84,7 @@ def test_audit_json_report_matches_schema(tmp_path: Path) -> None:
     write_valid_suite(tmp_path)
     report = audit_suite(tmp_path)
     schema = json.loads(
-        (ROOT / "docs" / "contracts" / "rack_audit_report.a0.schema.json").read_text(
+        (ROOT / "docs" / "contracts" / "rack_audit_report.a1.schema.json").read_text(
             encoding="utf-8"
         )
     )

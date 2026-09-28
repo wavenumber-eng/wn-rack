@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Self-declared tests require `purpose` (`checks` and `because`) in place of a
+  module docstring, and every implementation uses one form:
+  `{"status": ..., "reason": ..., "issue": ..., "code": [...]}`. Implemented
+  implementations declare the code they exercise as `file`, `module`, and
+  `function`; `rack audit` and collection verify each entry by reading only
+  that file (Python and Rust checkers; other file types fail).
+- `rack audit` reports every failing declaration requirement, tallies
+  self-declared and without-`RACK` files per stratum plus test files outside
+  any stratum, and fails files without `RACK` in strata that set
+  `require_declared = true`. The JSON report moves to `rack.audit_report`
+  `a1` with a `declarations` section.
+- Rack's own legacy modules are excluded from `ruff format`.
 - Add self-declared tests (in progress on the `altium-monkey` branch): a test
   file carries a `RACK = {...}` literal and one `run(case, impl)` entry point.
   `rack.declarations` reads and validates declarations and JSON vector files

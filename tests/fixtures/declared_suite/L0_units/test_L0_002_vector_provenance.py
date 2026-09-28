@@ -1,8 +1,10 @@
-"""Every vector file names a specification or authority as its provenance."""
-
 RACK = {
     "id": "L0_002",
     "title": "Vector provenance",
+    "purpose": {
+        "checks": "Every vector file names a specification or an authority as its provenance.",
+        "because": "A contract copied from an implementation's output would let that implementation grade itself.",
+    },
     "kind": "check",
     "concerns": ["fixture"],
     "cases": {"catalog": "fixture.vector_files"},

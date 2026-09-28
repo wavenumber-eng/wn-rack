@@ -1,9 +1,9 @@
 """Static reading and validation of self-declared test files.
 
-A self-declared test file carries a module docstring, one top-level
-``RACK = {...}`` literal, and a single ``run(case, impl)`` entry point. Rack
-reads all of it with ``ast`` so listing, auditing, and accounting never import
-the test module.
+A self-declared test file carries one top-level ``RACK = {...}`` literal,
+including the test's required purpose, and a single ``run(case, impl)`` entry
+point. Rack reads all of it with ``ast`` so listing, auditing, and accounting
+never import the test module.
 """
 
 from __future__ import annotations
@@ -13,9 +13,10 @@ import base64
 import functools
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 ID_PATTERN = re.compile(r"^L\d+_\d{3}[a-z]?$")
 STATUSES = ("implemented", "planned", "suspended", "not_applicable")
@@ -31,6 +32,19 @@ DIFFERENCE_KINDS = (
 )
 PROVENANCE_KINDS = ("authority", "specification", "generated")
 VECTOR_SCHEMA = "rack.cases.a0"
+# Every rule a declaration must meet, in the order `rack audit` reports them.
+REQUIREMENTS = (
+    "rack_literal",
+    "keys",
+    "purpose",
+    "id",
+    "kind",
+    "entry_point",
+    "implementations",
+    "expect",
+    "cases_ref",
+    "deferrals",
+)
 
 _KNOWN_KEYS = frozenset(
     {
@@ -38,11 +52,11 @@ _KNOWN_KEYS = frozenset(
         "title",
         "kind",
         "concerns",
-        "code_under_test",
         "cases",
         "observation",
         "expect",
         "implementations",
+        "purpose",
         "deferred",
         "objectives",
         "approach",
@@ -58,11 +72,25 @@ class DeclarationError(ValueError):
 
 
 @dataclass(frozen=True)
+class CodeRef:
+    """One function an implementation exercises, and the file that defines it.
+
+    ``file`` is relative to the suite's project root. ``function`` is a plain
+    name or ``Type.method`` (Python) / ``Type::method`` (Rust).
+    """
+
+    file: str
+    module: str
+    function: str
+
+
+@dataclass(frozen=True)
 class ImplementationStatus:
     name: str
     status: str
     reason: str = ""
     issue: str = ""
+    code: tuple[CodeRef, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -79,7 +107,8 @@ class TestDeclaration:
     id: str
     title: str
     kind: str
-    docstring: str
+    checks: str
+    because: str
     raw: Mapping[str, object]
     implementations: tuple[ImplementationStatus, ...] = ()
     deferred: Mapping[str, Mapping[str, tuple[Difference, ...]]] = field(default_factory=dict)
@@ -174,9 +203,9 @@ def manifest_entry(declaration: TestDeclaration) -> dict[str, object]:
     return {
         "id": declaration.id,
         "name": declaration.title or declaration.path.name,
-        "description": declaration.docstring.strip().splitlines()[0],
+        "description": declaration.checks,
         "concerns": list(declaration.concerns),
-        "code_under_test": raw.get("code_under_test", {}),
+        "code_under_test": _python_code_blocks(declaration),
         "objectives": raw.get("objectives", {}),
         "approach": raw.get("approach", {}),
         "test_functions": {},
@@ -187,10 +216,19 @@ def manifest_entry(declaration: TestDeclaration) -> dict[str, object]:
         "test_case_type": raw.get("test_case_type", ""),
         "rack": {
             "kind": declaration.kind,
+            "purpose": {"checks": declaration.checks, "because": declaration.because},
             "cases": dict(cases),
             "expect_source": str(declaration.expect.get("source", "")),
             "implementations": {
-                entry.name: {"status": entry.status, "reason": entry.reason, "issue": entry.issue}
+                entry.name: {
+                    "status": entry.status,
+                    "reason": entry.reason,
+                    "issue": entry.issue,
+                    "code": [
+                        {"file": ref.file, "module": ref.module, "function": ref.function}
+                        for ref in entry.code
+                    ],
+                }
                 for entry in declaration.implementations
             },
             "deferred": {
@@ -200,10 +238,97 @@ def manifest_entry(declaration: TestDeclaration) -> dict[str, object]:
     }
 
 
+def _python_code_blocks(declaration: TestDeclaration) -> list[dict[str, object]]:
+    """Legacy ``code_under_test`` blocks for the Python code a test declares."""
+    blocks: dict[str, dict[str, list[str]]] = {}
+    for entry in declaration.implementations:
+        for ref in entry.code:
+            if not ref.file.endswith(".py"):
+                continue
+            block = blocks.setdefault(ref.module, {"functions": [], "classes": [], "methods": []})
+            owner, _, method = ref.function.rpartition(".")
+            if owner:
+                block["classes"].append(owner)
+                block["methods"].append(method)
+            else:
+                block["functions"].append(ref.function)
+    return [
+        {"module": module, **{key: sorted(set(names)) for key, names in block.items() if names}}
+        for module, block in blocks.items()
+    ]
+
+
 def read_declaration(path: Path) -> TestDeclaration:
     """Read and validate a self-declared test file without importing it."""
-    source = path.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(path))
+    results, problems = _evaluate(path)
+    if problems:
+        raise DeclarationError(next(iter(problems.values())))
+    raw = cast(dict[str, object], results["raw"])
+    checks, because = cast(tuple[str, str], results["purpose"])
+    deferred, issues = cast(
+        tuple[dict[str, dict[str, tuple[Difference, ...]]], dict[str, dict[str, str]]],
+        results["deferrals"],
+    )
+    return TestDeclaration(
+        path=path,
+        id=cast(str, results["id"]),
+        title=str(raw.get("title", "")),
+        kind=cast(str, results["kind"]),
+        checks=checks,
+        because=because,
+        raw=raw,
+        implementations=cast(tuple[ImplementationStatus, ...], results["implementations"]),
+        deferred=deferred,
+        deferred_issues=issues,
+    )
+
+
+def declaration_problems(path: Path) -> dict[str, str]:
+    """Every requirement in ``REQUIREMENTS`` the file fails, keyed by requirement.
+
+    Each requirement is checked on its own, so one mistake does not hide the
+    others. Deferrals are checked only when the implementations parse.
+    """
+    return _evaluate(path)[1]
+
+
+def _evaluate(path: Path) -> tuple[dict[str, object], dict[str, str]]:
+    try:
+        tree, raw = _parse_rack(path)
+    except DeclarationError as error:
+        return {}, {"rack_literal": str(error)}
+    kind = str(raw.get("kind", "test"))
+    steps: list[tuple[str, Callable[[], object]]] = [
+        ("keys", lambda: _check_keys(path, raw)),
+        ("purpose", lambda: _parse_purpose(path, raw)),
+        ("id", lambda: _check_id(path, raw)),
+        ("kind", lambda: _check_kind(path, kind)),
+        ("entry_point", lambda: _check_entry_point(path, tree)),
+        ("implementations", lambda: _parse_implementations(path, raw, kind)),
+        ("expect", lambda: _check_expect(path, raw)),
+        ("cases_ref", lambda: _check_cases_ref(path, raw)),
+    ]
+    results: dict[str, object] = {"raw": raw}
+    problems: dict[str, str] = {}
+    for name, step in steps:
+        try:
+            results[name] = step()
+        except DeclarationError as error:
+            problems[name] = str(error)
+    if "implementations" in results:
+        implementations = cast(tuple[ImplementationStatus, ...], results["implementations"])
+        try:
+            results["deferrals"] = _parse_deferred(path, raw, implementations)
+        except DeclarationError as error:
+            problems["deferrals"] = str(error)
+    return results, problems
+
+
+def _parse_rack(path: Path) -> tuple[ast.Module, dict[str, object]]:
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (OSError, SyntaxError, UnicodeDecodeError) as error:
+        raise DeclarationError(f"{path.name}: unreadable test file ({error})") from error
     node = _rack_assignment(tree)
     if node is None:
         raise DeclarationError(f"{path.name}: no top-level RACK declaration")
@@ -213,32 +338,13 @@ def read_declaration(path: Path) -> TestDeclaration:
         raise DeclarationError(f"{path.name}: RACK must be a pure literal ({error})") from error
     if not isinstance(raw, dict):
         raise DeclarationError(f"{path.name}: RACK must be a dict literal")
-    _check_keys(path, raw)
-    docstring = ast.get_docstring(tree) or ""
-    if not docstring.strip():
-        raise DeclarationError(
-            f"{path.name}: a module docstring stating the test's purpose is required"
-        )
-    test_id = _check_id(path, raw)
-    kind = str(raw.get("kind", "test"))
+    return tree, raw
+
+
+def _check_kind(path: Path, kind: str) -> str:
     if kind not in ("test", "check"):
         raise DeclarationError(f"{path.name}: kind must be 'test' or 'check'")
-    _check_entry_point(path, tree)
-    implementations = _parse_implementations(path, raw, kind)
-    _check_expect(path, raw)
-    _check_cases_ref(path, raw)
-    deferred, issues = _parse_deferred(path, raw, implementations)
-    return TestDeclaration(
-        path=path,
-        id=test_id,
-        title=str(raw.get("title", "")),
-        kind=kind,
-        docstring=docstring,
-        raw=raw,
-        implementations=implementations,
-        deferred=deferred,
-        deferred_issues=issues,
-    )
+    return kind
 
 
 def load_vector_file(path: Path) -> VectorSet:
@@ -314,6 +420,27 @@ def _rack_assignment(tree: ast.Module) -> ast.Assign | None:
     return None
 
 
+PURPOSE_MIN_WORDS = 3
+
+
+def _parse_purpose(path: Path, raw: Mapping[str, object]) -> tuple[str, str]:
+    """Return (checks, because): what the test verifies and why it matters.
+
+    Both are required prose, so a reviewer can judge whether the test still
+    earns its place; empty or one-word placeholders fail.
+    """
+    purpose = raw.get("purpose")
+    if not isinstance(purpose, dict) or set(purpose) != {"checks", "because"}:
+        raise DeclarationError(f"{path.name}: purpose must be {{'checks': ..., 'because': ...}}")
+    for key in ("checks", "because"):
+        value = purpose[key]
+        if not isinstance(value, str) or len(value.split()) < PURPOSE_MIN_WORDS:
+            raise DeclarationError(
+                f"{path.name}: purpose.{key} must say it in at least {PURPOSE_MIN_WORDS} words"
+            )
+    return str(purpose["checks"]).strip(), str(purpose["because"]).strip()
+
+
 def _check_keys(path: Path, raw: Mapping[str, object]) -> None:
     unknown = sorted(set(raw) - _KNOWN_KEYS)
     if unknown:
@@ -375,33 +502,48 @@ def _parse_implementations(
     return tuple(_parse_status(path, str(name), entry) for name, entry in value.items())
 
 
+_STATUS_KEYS = frozenset({"status", "reason", "issue", "code"})
+_CODE_KEYS = frozenset({"file", "module", "function"})
+
+
 def _parse_status(path: Path, name: str, entry: object) -> ImplementationStatus:
-    if entry == "implemented":
-        return ImplementationStatus(name, "implemented")
-    status = _reasoned_status(entry)
-    if status is None:
-        raise DeclarationError(
-            f"{path.name}: {name} status must be 'implemented' or one of "
-            "{planned|suspended|not_applicable: reason}"
-        )
-    status_name, reason, issue = status
-    if status_name == "planned" and not issue:
+    if not isinstance(entry, dict) or entry.get("status") not in STATUSES:
+        raise DeclarationError(f"{path.name}: {name} needs a status in {STATUSES}")
+    unknown = sorted(set(entry) - _STATUS_KEYS)
+    if unknown:
+        raise DeclarationError(f"{path.name}: {name} has unknown keys {unknown}")
+    status = str(entry["status"])
+    reason = _text(entry.get("reason", ""))
+    issue = _text(entry.get("issue", ""))
+    code = _parse_code(path, name, entry.get("code", []))
+    if status == "implemented" and not code:
+        raise DeclarationError(f"{path.name}: implemented {name} must declare its code")
+    if status != "implemented" and not reason.strip():
+        raise DeclarationError(f"{path.name}: {status} {name} needs a reason")
+    if status == "planned" and not issue:
         raise DeclarationError(f"{path.name}: planned {name} needs an issue")
-    return ImplementationStatus(name, status_name, reason, issue)
+    return ImplementationStatus(name, status, reason, issue, code)
 
 
-def _reasoned_status(entry: object) -> tuple[str, str, str] | None:
-    """Return (status, reason, issue) for a ``{status: reason, "issue": ...}`` entry."""
-    if not isinstance(entry, dict):
-        return None
-    statuses = [key for key in entry if key in STATUSES and key != "implemented"]
-    if len(statuses) != 1:
-        return None
-    reason = entry[statuses[0]]
-    issue = entry.get("issue", "")
-    if not isinstance(reason, str) or not reason.strip() or not isinstance(issue, str):
-        return None
-    return statuses[0], reason, issue
+def _parse_code(path: Path, name: str, value: object) -> tuple[CodeRef, ...]:
+    if not isinstance(value, list):
+        raise DeclarationError(f"{path.name}: {name} code must be a list")
+    refs: list[CodeRef] = []
+    for item in value:
+        if (
+            not isinstance(item, dict)
+            or set(item) != _CODE_KEYS
+            or not all(isinstance(item[key], str) and item[key].strip() for key in _CODE_KEYS)
+        ):
+            raise DeclarationError(
+                f"{path.name}: {name} code entries need exactly file, module, and function"
+            )
+        refs.append(CodeRef(item["file"], item["module"], item["function"]))
+    return tuple(refs)
+
+
+def _text(value: object) -> str:
+    return value if isinstance(value, str) else ""
 
 
 def _check_expect(path: Path, raw: Mapping[str, object]) -> None:

@@ -5,28 +5,42 @@ from pathlib import Path
 
 import pytest
 
+from rack.code_refs import check_code_ref
 from rack.declarations import (
+    CodeRef,
     DeclarationError,
+    declaration_problems,
     is_self_declared,
     load_vector_file,
     read_declaration,
     validate_deferrals,
 )
 
-VALID = '''"""parse_duration converts duration strings to seconds."""
-
-RACK = {
+VALID = """RACK = {
     "id": "L1_012",
     "title": "Duration parsing",
+    "purpose": {
+        "checks": "Duration strings parse to whole seconds.",
+        "because": "Schedules built on a wrong parse miss every deadline.",
+    },
     "concerns": ["time.parse"],
     "cases": {"file": "vectors/L1_012_parse_duration.json"},
     "observation": "DurationResult",
     "expect": {"source": "contract", "comparator": "exact"},
     "implementations": {
-        "python": "implemented",
-        "rust": {"planned": "not ported yet", "issue": "#41"},
-        "cpp": {"suspended": "C++ port paused by policy"},
-        "wasm": {"not_applicable": "no WASM target"},
+        "python": {
+            "status": "implemented",
+            "code": [
+                {
+                    "file": "src/clockwork/durations.py",
+                    "module": "clockwork.durations",
+                    "function": "parse_duration",
+                },
+            ],
+        },
+        "rust": {"status": "planned", "reason": "not ported yet", "issue": "#41"},
+        "cpp": {"status": "suspended", "reason": "C++ port paused by policy"},
+        "wasm": {"status": "not_applicable", "reason": "no WASM target"},
     },
     "deferred": {
         "python": {
@@ -47,7 +61,7 @@ def _text(case):
 
 def run(case, impl):
     return impl.batch([_text(case)])
-'''
+"""
 
 
 def write_test(tmp_path: Path, source: str, name: str = "test_L1_012_parse_duration.py") -> Path:
@@ -70,6 +84,11 @@ def test_valid_declaration_reads_statuses_and_deferrals(tmp_path: Path) -> None:
     ]
     rust = declaration.status_of("rust")
     assert rust is not None and rust.issue == "#41"
+    python = declaration.status_of("python")
+    assert python is not None and python.code == (
+        CodeRef("src/clockwork/durations.py", "clockwork.durations", "parse_duration"),
+    )
+    assert declaration.checks == "Duration strings parse to whole seconds."
     (difference,) = declaration.deferred["python"]["fractional_hours"]
     assert difference.path == ("seconds",) and difference.expected == 5400
     assert declaration.deferred_issues["python"]["fractional_hours"] == "#42"
@@ -79,7 +98,9 @@ def test_valid_declaration_reads_statuses_and_deferrals(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("old", "new", "message"),
     [
-        ('"""parse_duration converts duration strings to seconds."""', "", "docstring"),
+        ('"purpose": {', '"purpose_text": "x", "old": {', "unknown RACK keys"),
+        ('"checks": "Duration strings parse to whole seconds."', '"checks": ""', "purpose.checks"),
+        ('"because": "Schedules', '"because": "TODO", "x": "Schedules', "purpose must be"),
         ('"title":', '"unknown_key": 1, "title":', "unknown RACK keys"),
         ('"id": "L1_012"', '"id": "L1-12"', "id must match"),
         ('"id": "L1_012"', '"id": "L1_013"', "file name must start"),
@@ -96,11 +117,23 @@ def test_valid_declaration_reads_statuses_and_deferrals(tmp_path: Path) -> None:
             "branch",
         ),
         (
-            '{"planned": "not ported yet", "issue": "#41"}',
-            '{"planned": "not ported yet"}',
+            '{"status": "planned", "reason": "not ported yet", "issue": "#41"}',
+            '{"status": "planned", "reason": "not ported yet"}',
             "needs an issue",
         ),
-        ('{"suspended": "C++ port paused by policy"}', '"maybe"', "status must be"),
+        (
+            '{"status": "suspended", "reason": "C++ port paused by policy"}',
+            '"maybe"',
+            "needs a status",
+        ),
+        ('"reason": "C++ port paused by policy"', '"why": "paused"', "unknown keys"),
+        ('"reason": "no WASM target"', '"reason": " "', "needs a reason"),
+        ('"function": "parse_duration",', "", "exactly file, module, and function"),
+        (
+            '"status": "implemented",\n            "code": [',
+            '"status": "implemented",\n            "unused": [',
+            "unknown keys",
+        ),
         ('"comparator": "exact"', '"compare": "exact"', "comparator is required"),
         ('"source": "contract"', '"source": "authority"', "needs expect.loader"),
         ('{"file": "vectors/L1_012_parse_duration.json"}', '{"glob": "*.json"}', "cases must be"),
@@ -119,22 +152,27 @@ def test_declaration_rules_fail_closed(tmp_path: Path, old: str, new: str, messa
 
 
 def test_check_kind_declares_no_implementations(tmp_path: Path) -> None:
-    source = '''"""The manifest lists every test file."""
-
-RACK = {
+    source = """RACK = {
     "id": "L99_001",
     "kind": "check",
+    "purpose": {
+        "checks": "The manifest lists every test file.",
+        "because": "An unlisted file never runs in signoff.",
+    },
     "cases": {"catalog": "suite.manifest"},
-    "implementations": {"python": "implemented"},
+    "implementations": {"python": {"status": "suspended", "reason": "not a check"}},
 }
 
 
 def run(case, impl):
     return []
-'''
+"""
     with pytest.raises(DeclarationError, match="check declares no implementations"):
         read_declaration(write_test(tmp_path, source, "test_L99_001_manifest.py"))
-    valid = source.replace('    "implementations": {"python": "implemented"},\n', "")
+    valid = source.replace(
+        '    "implementations": {"python": {"status": "suspended", "reason": "not a check"}},\n',
+        "",
+    )
     assert read_declaration(write_test(tmp_path, valid, "test_L99_001_manifest.py")).kind == "check"
 
 
@@ -210,3 +248,85 @@ def test_deferrals_are_checked_against_the_complete_case_list(tmp_path: Path) ->
 def test_legacy_file_is_not_self_declared(tmp_path: Path) -> None:
     legacy = write_test(tmp_path, "def test_something():\n    assert True\n", "test_L1_001_x.py")
     assert not is_self_declared(legacy)
+
+
+def test_every_failing_requirement_is_reported_on_its_own(tmp_path: Path) -> None:
+    source = (
+        VALID.replace('"checks": "Duration strings parse to whole seconds."', '"checks": ""')
+        .replace('"comparator": "exact"', '"compare": "exact"')
+        .replace('"issue": "#41"', '"issue": ""')
+    )
+
+    problems = declaration_problems(write_test(tmp_path, source))
+
+    assert sorted(problems) == ["expect", "implementations", "purpose"]
+    assert declaration_problems(write_test(tmp_path, VALID)) == {}
+    assert list(declaration_problems(write_test(tmp_path, "RACK = [1]\n"))) == ["rack_literal"]
+
+
+PYTHON_MODULE = """class Parser:
+    def parse(self):
+        pass
+
+
+def parse_duration(text):
+    return 0
+"""
+
+RUST_MODULE = """pub struct Parser;
+
+impl Parser {
+    pub fn parse(&self) {}
+}
+
+// fn commented_out() {}
+pub fn parse_duration(text: &str) -> u64 {
+    0
+}
+"""
+
+
+def write_project(tmp_path: Path) -> Path:
+    python = tmp_path / "src" / "py" / "clockwork" / "durations.py"
+    python.parent.mkdir(parents=True)
+    python.write_text(PYTHON_MODULE, encoding="utf-8")
+    crate = tmp_path / "src" / "rs" / "clock-work"
+    (crate / "src").mkdir(parents=True)
+    (crate / "Cargo.toml").write_text('[package]\nname = "clock-work"\n', encoding="utf-8")
+    (crate / "src" / "durations.rs").write_text(RUST_MODULE, encoding="utf-8")
+    (crate / "src" / "lib.rs").write_text("pub mod durations;\n", encoding="utf-8")
+    return tmp_path
+
+
+PY = "src/py/clockwork/durations.py"
+RS = "src/rs/clock-work/src/durations.rs"
+
+
+@pytest.mark.parametrize(
+    ("ref", "problem"),
+    [
+        (CodeRef(PY, "clockwork.durations", "parse_duration"), None),
+        (CodeRef(PY, "clockwork.durations", "Parser.parse"), None),
+        (CodeRef(PY, "clockwork.durations", "parse_hours"), "defines no parse_hours"),
+        (CodeRef(PY, "clockwork.durations", "Timer.parse"), "defines no class Timer"),
+        (CodeRef(PY, "clockwork.timing", "parse_duration"), "is not module clockwork.timing"),
+        (CodeRef("src/py/clockwork/missing.py", "clockwork.missing", "f"), "does not exist"),
+        (CodeRef(RS, "clock_work::durations", "parse_duration"), None),
+        (CodeRef(RS, "clock_work::durations", "Parser::parse"), None),
+        (CodeRef(RS, "clock_work::durations", "commented_out"), "defines no fn commented_out"),
+        (CodeRef(RS, "clock_work::durations", "Timer::parse"), "has no impl for Timer"),
+        (CodeRef(RS, "clock_work::timing", "parse_duration"), "is not module clock_work::timing"),
+        (CodeRef(RS, "other_crate::durations", "parse_duration"), "is not in crate other_crate"),
+        (CodeRef("src/rs/clock-work/src/lib.rs", "clock_work", "parse_duration"), "defines no fn"),
+        (CodeRef("src/rs/clock-work/Cargo.toml", "clock_work", "x"), "no static check for '.toml'"),
+    ],
+)
+def test_code_refs_resolve_by_reading_the_declared_file(
+    tmp_path: Path, ref: CodeRef, problem: str | None
+) -> None:
+    result = check_code_ref(write_project(tmp_path), ref)
+
+    if problem is None:
+        assert result is None
+    else:
+        assert result is not None and problem in result

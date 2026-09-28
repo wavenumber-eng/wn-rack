@@ -10,9 +10,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from rack.code_refs import declaration_code_problems, project_root
+from rack.declaration_tally import DeclarationTally, require_declared, tally_declarations
 from rack.declarations import (
     DeclarationError,
     TestDeclaration,
+    declaration_problems,
     declared_test_files,
     load_declaration,
     load_vector_file,
@@ -20,7 +23,7 @@ from rack.declarations import (
 )
 
 AUDIT_REPORT_TYPE = "rack.audit_report"
-AUDIT_REPORT_VERSION = "a0"
+AUDIT_REPORT_VERSION = "a1"
 DEFAULT_SIGNOFF_STRATA = ("L99_signoff",)
 IGNORED_TEST_DIR_NAMES = {"__pycache__", "rack_results"}
 
@@ -58,6 +61,7 @@ class AuditReport:
     signoff_strata: tuple[str, ...]
     target_stratum: str | None
     failures: tuple[AuditFailure, ...]
+    declarations: DeclarationTally | None = None
 
     @property
     def passed(self) -> bool:
@@ -77,6 +81,8 @@ class AuditReport:
         }
         if self.target_stratum is not None:
             data["target_stratum"] = self.target_stratum
+        if self.declarations is not None:
+            data["declarations"] = self.declarations.to_json_data()
         return data
 
 
@@ -100,13 +106,16 @@ def audit_suite(
     _validate_strata_order(strata, failures)
 
     selected_strata = _selected_strata(target_stratum, strata, failures)
+    tally: DeclarationTally | None = None
     if rack_config is not None:
         _validate_extra_strata(tests_root, strata, failures)
         for stratum in selected_strata:
             _validate_stratum(tests_root, stratum, strict, failures)
-        _validate_declared_suite(tests_root, selected_strata, strata, failures)
+        project = project_root(tests_root, rack_config)
+        _validate_declared_suite(tests_root, project, selected_strata, strata, failures)
         if target_stratum is None:
             _validate_signoff_strata(tests_root, strata, configured_signoff, failures)
+        tally = tally_declarations(tests_root, selected_strata, failures)
 
     return AuditReport(
         root=tests_root,
@@ -114,6 +123,7 @@ def audit_suite(
         signoff_strata=tuple(configured_signoff),
         target_stratum=target_stratum,
         failures=tuple(failures),
+        declarations=tally,
     )
 
 
@@ -429,6 +439,17 @@ def _validate_subtest_files(
         )
     manifest_files -= declared
     discovered_files = {path.name for path in stratum_dir.glob("test_*.py")} - declared
+    if require_declared(stratum_dir):
+        for file_name in sorted(discovered_files):
+            failures.append(
+                _failure(
+                    "undeclared_test_file",
+                    f"{stratum} requires self-declared tests; {file_name} has no RACK declaration",
+                    f"{stratum}/{file_name}",
+                    stratum=stratum,
+                    subtest=file_name,
+                )
+            )
     for file_name in sorted(discovered_files - manifest_files):
         failures.append(
             _failure(
@@ -486,21 +507,42 @@ def _validate_signoff_strata(
 
 def _validate_declared_suite(
     root: Path,
+    project: Path,
     selected: tuple[str, ...],
     strata: tuple[str, ...],
     failures: list[AuditFailure],
 ) -> None:
-    """Check self-declared files: declarations, cases, id collisions, test imports."""
+    """Check self-declared files: declarations, cases, code, id collisions, test imports."""
     declarations = _suite_declarations(root, strata)
     for stratum in selected:
         for path in declared_test_files(root / stratum):
             declaration = _read_declared(root, stratum, path, failures)
             if declaration is not None:
                 _validate_declared_cases(root, stratum, declaration, failures)
+                _validate_declared_code(root, project, stratum, declaration, failures)
     selected_paths = {path.resolve() for s in selected for path in declared_test_files(root / s)}
     local = [d for d in declarations if d.path.resolve() in selected_paths]
     _validate_declared_ids(root, strata, declarations, local, failures)
     _validate_test_imports(root, selected, declarations, failures)
+
+
+def _validate_declared_code(
+    root: Path,
+    project: Path,
+    stratum: str,
+    declaration: TestDeclaration,
+    failures: list[AuditFailure],
+) -> None:
+    for problem in declaration_code_problems(project, declaration):
+        failures.append(
+            _failure(
+                "unresolved_code",
+                f"{declaration.path.name}: {problem}",
+                _relative(root, declaration.path),
+                stratum=stratum,
+                subtest=declaration.path.name,
+            )
+        )
 
 
 def _suite_declarations(root: Path, strata: tuple[str, ...]) -> list[TestDeclaration]:
@@ -519,11 +561,14 @@ def _read_declared(
 ) -> TestDeclaration | None:
     try:
         return load_declaration(path)
-    except DeclarationError as exc:
+    except DeclarationError:
+        pass
+    # Report every failing requirement, not only the first one.
+    for requirement, message in declaration_problems(path).items():
         failures.append(
             _failure(
                 "invalid_declaration",
-                str(exc),
+                f"[{requirement}] {message}",
                 _relative(root, path),
                 stratum=stratum,
                 subtest=path.name,

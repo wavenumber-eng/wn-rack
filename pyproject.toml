@@ -67,6 +67,7 @@ path = "src/rack/_version.py"
 
 [tool.hatch.build.targets.wheel.force-include]
 "docs/contracts/rack_audit_report.a0.schema.json" = "rack/contracts/rack_audit_report.a0.schema.json"
+"docs/contracts/rack_audit_report.a1.schema.json" = "rack/contracts/rack_audit_report.a1.schema.json"
 "docs/contracts/rack_parity_report.a0.schema.json" = "rack/contracts/rack_parity_report.a0.schema.json"
 
 [tool.hatch.build.targets.sdist]
@@ -111,6 +112,18 @@ reportMissingTypeStubs = false
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.format]
+# Legacy modules under the documented monolith exception keep their layout;
+# formatting them would churn thousands of lines and trip the size ratchet.
+exclude = [
+    "src/rack/cli.py",
+    "src/rack/parser.py",
+    "src/rack/progress.py",
+    "src/rack/progress_cli.py",
+    "tests/L0_public_cli/test_L0_002_public_api.py",
+    "tests/L1_self_hosting/test_L1_001_run_fixture_suite.py",
+]
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]

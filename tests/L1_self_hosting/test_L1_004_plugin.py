@@ -212,6 +212,15 @@ def test_invalid_declarations_fail_collection(tmp_path: Path) -> None:
     assert result.returncode != 0
     assert "case lanes ['nightly']" in result.stdout
 
+    # Declared code that does not exist fails collection, not just the audit.
+    suite = copy_suite(tmp_path / "third")
+    replace_in(suite / TEST_L0_001, '"function": "parse_duration_shadow"', '"function": "gone"')
+
+    result, _rows = run_suite(suite)
+
+    assert result.returncode != 0
+    assert "shadow: suite_support/durations.py defines no gone" in result.stdout
+
 
 def test_legacy_file_mentioning_rack_text_is_not_captured(tmp_path: Path) -> None:
     suite = copy_suite(tmp_path)
@@ -228,11 +237,13 @@ def test_legacy_file_mentioning_rack_text_is_not_captured(tmp_path: Path) -> Non
     assert rows["test_mentions_rack"][:2] == ("passed", "")
 
 
-BUDGET_TEST = '''"""parse_duration stays within its time budget."""
-
-RACK = {
+BUDGET_TEST = """RACK = {
     "id": "L0_005",
     "title": "Duration parsing budget",
+    "purpose": {
+        "checks": "Parsing stays within its time budget.",
+        "because": "A slow parser stalls every caller that loads schedules.",
+    },
     "cases": {"file": "vectors/L0_001_parse_duration.json"},
     "expect": {
         "source": "budget",
@@ -241,13 +252,16 @@ RACK = {
         "max_ratio": 0.000001,
         "relative_to": "python",
     },
-    "implementations": {"python": "implemented", "shadow": "implemented"},
+    "implementations": {
+        "python": {"status": "implemented", "code": [{"file": "suite_support/durations.py", "module": "suite_support.durations", "function": "parse_duration"}]},
+        "shadow": {"status": "implemented", "code": [{"file": "suite_support/durations.py", "module": "suite_support.durations", "function": "parse_duration_shadow"}]},
+    },
 }
 
 
 def run(case, impl):
     return impl.batch([{"op": "parse_duration", "text": case.inputs["text"]}])
-'''
+"""
 
 
 def test_budget_expectation_measures_run_time(tmp_path: Path) -> None:

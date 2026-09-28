@@ -21,7 +21,8 @@ This package has these reference documents:
 - [Self-Declared Tests Design](./design/self-declared-tests.md)
   Draft: one test per file with a static declaration, shared cases for every
   implementation, independent expectations, and parity accounting.
-- [Audit Report Schema](./contracts/rack_audit_report.a0.schema.json)
+- [Audit Report Schema](./contracts/rack_audit_report.a1.schema.json)
+- [Audit Report Schema, previous a0](./contracts/rack_audit_report.a0.schema.json)
 - [Parity Report Schema](./contracts/rack_parity_report.a0.schema.json)
   Defines the versioned JSON contract emitted by `rack audit --format json`.
 

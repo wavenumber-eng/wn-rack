@@ -3,6 +3,8 @@ name = "Declared Fixture Suite"
 version = "1.0"
 description = "Self-declared tests run against two fixture implementations"
 default_lane = "fast"
+# Declared code files are relative to the suite itself.
+project_root = "."
 
 [strata]
 order = ["L0_units"]

@@ -31,7 +31,7 @@ name = "Native Audit"
 description = "Validate Rack native audit API and CLI contract behavior"
 concerns = ["cli", "contracts"]
 test_case_type = "contract"
-test_cases = "../../docs/contracts/rack_audit_report.a0.schema.json"
+test_cases = "../../docs/contracts/rack_audit_report.a1.schema.json"
 
 [subtests.code_under_test]
 module = "rack.audit"

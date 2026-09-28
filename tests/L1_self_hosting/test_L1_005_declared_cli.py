@@ -58,6 +58,53 @@ def test_audit_accepts_a_mixed_suite_without_entries_for_declared_files(tmp_path
     assert audit_codes(copy_suite(tmp_path)) == []
 
 
+def test_audit_tallies_declared_files_requirements_and_outliers(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    (suite / "test_L0_099_loose.py").write_text("def test_loose():\n    pass\n", encoding="utf-8")
+    nested = suite / UNITS / "extra" / "test_L0_098_nested.py"
+    nested.parent.mkdir()
+    nested.write_text("def test_nested():\n    pass\n", encoding="utf-8")
+    replace_in(
+        suite / TEST_L0_001, '"function": "parse_duration_shadow"', '"function": "parse_hours"'
+    )
+    replace_in(
+        suite / UNITS / "test_L0_003_format_duration.py",
+        '"checks": "Formatting seconds matches the captured reference text."',
+        '"checks": "TODO"',
+    )
+
+    tally = audit_suite(suite, signoff_strata=("L0_units",)).declarations
+
+    assert tally is not None
+    assert (tally.test_files, tally.self_declared, tally.without_rack) == (5, 4, 1)
+    assert tally.strata[0].without_rack == ("test_L0_004_legacy.py",)
+    assert tally.outside_strata == (
+        "L0_units/extra/test_L0_098_nested.py",
+        "test_L0_099_loose.py",
+    )
+    failing = {name: files for name, files in tally.requirements if files}
+    assert failing == {
+        "purpose": ("L0_units/test_L0_003_format_duration.py",),
+        "code": ("L0_units/test_L0_001_parse_duration.py",),
+    }
+
+
+def test_require_declared_fails_remaining_legacy_files(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    replace_in(
+        suite / UNITS / "STRATUM.toml",
+        "parallel = true\n",
+        "parallel = true\nrequire_declared = true\n",
+    )
+
+    report = audit_suite(suite, signoff_strata=("L0_units",))
+
+    assert [(f.code, f.subtest) for f in report.failures] == [
+        ("undeclared_test_file", "test_L0_004_legacy.py")
+    ]
+    assert report.declarations is not None and report.declarations.strata[0].require_declared
+
+
 def add_manifest_entry(suite: Path) -> None:
     with (suite / UNITS / "STRATUM.toml").open("a", encoding="utf-8") as handle:
         handle.write('\n[[subtests]]\nid = "L0_001"\nfile = "test_L0_001_parse_duration.py"\n')
@@ -71,6 +118,10 @@ def break_vectors(suite: Path) -> None:
     replace_in(
         suite / UNITS / "vectors" / "L0_001_parse_duration.json", '"fractional_hours"', '"x"'
     )
+
+
+def break_code(suite: Path) -> None:
+    replace_in(suite / TEST_L0_001, '"function": "parse_duration"', '"function": "parse_hours"')
 
 
 def duplicate_id(suite: Path) -> None:
@@ -97,6 +148,7 @@ def declared_imports_test(suite: Path) -> None:
         (add_manifest_entry, ["declared_file_in_manifest"]),
         (break_declaration, ["invalid_declaration"]),
         (break_vectors, ["invalid_cases"]),
+        (break_code, ["unresolved_code"]),
         (duplicate_id, ["duplicate_test_id"]),
         (helper_imports_test, ["test_module_import"]),
         (declared_imports_test, ["test_module_import"]),
