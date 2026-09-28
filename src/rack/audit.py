@@ -598,6 +598,10 @@ def _native_content_problems(
     problems: list[str] = []
     if symbol and f"fn {symbol}(" not in text:
         problems.append(f"{entry.name} test {entry.test} must define fn {symbol}")
+    # A suspended or planned test may predate the vector file; it must read it
+    # once the implementation is implemented again.
+    if entry.status != "implemented":
+        return problems
     vectors = [Path(item).name for item in declaration.resources if item.endswith(".json")]
     problems += [
         f"{entry.name} test {entry.test} does not read {name}"

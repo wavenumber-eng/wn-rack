@@ -230,4 +230,16 @@ def test_audit_holds_native_tests_to_the_naming_convention(tmp_path: Path) -> No
     messages = [failure.message for failure in report.failures if failure.code == "native_test"]
     assert any("must be named test_l0_007_plain_parse.rs" in m for m in messages)
     assert any("must define fn l0_007_plain_parse" in m for m in messages)
-    assert any("does not read L0_001_parse_duration.json" in m for m in messages) is False
+    assert not any("does not read L0_001_parse_duration.json" in m for m in messages)
+
+    # An implemented native test must read the vector file; a suspended one may
+    # predate it.
+    replace_in(renamed, "L0_001_parse_duration.json", "another_file.json")
+    report = audit_suite(suite, signoff_strata=("L0_units",))
+    assert any("does not read L0_001_parse_duration.json" in f.message for f in report.failures)
+    replace_in(plain, '"status": "implemented",
+            "test"', '"status": "suspended",
+            "reason": "port paused",
+            "test"')
+    report = audit_suite(suite, signoff_strata=("L0_units",))
+    assert not any("does not read" in f.message for f in report.failures)
