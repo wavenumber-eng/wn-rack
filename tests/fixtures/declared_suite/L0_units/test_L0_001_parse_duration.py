@@ -1,3 +1,5 @@
+from suite_support.operations import ParseDuration
+
 RACK = {
     "id": "L0_001",
     "title": "Duration parsing",
@@ -6,30 +8,13 @@ RACK = {
         "because": "Callers schedule work from these seconds; a wrong parse shifts every deadline.",
     },
     "concerns": ["fixture"],
+    "operations": ["ParseDuration"],
     "cases": {"file": "vectors/L0_001_parse_duration.json"},
     "observation": "DurationResult",
     "expect": {"source": "contract", "comparator": "exact"},
     "implementations": {
-        "python": {
-            "status": "implemented",
-            "code": [
-                {
-                    "file": "suite_support/durations.py",
-                    "module": "suite_support.durations",
-                    "function": "parse_duration",
-                },
-            ],
-        },
-        "shadow": {
-            "status": "implemented",
-            "code": [
-                {
-                    "file": "suite_support/durations.py",
-                    "module": "suite_support.durations",
-                    "function": "parse_duration_shadow",
-                },
-            ],
-        },
+        "python": {"status": "implemented"},
+        "shadow": {"status": "implemented"},
         "rust": {"status": "planned", "reason": "not ported yet", "issue": "#1"},
         "cpp": {"status": "suspended", "reason": "port paused by policy"},
         "wasm": {"status": "not_applicable", "reason": "no WASM target"},
@@ -48,5 +33,5 @@ RACK = {
 
 
 def run(case, impl):
-    (result,) = impl.batch([{"op": "parse_duration", "text": case.inputs["text"]}])
+    (result,) = impl.batch([ParseDuration(text=case.inputs["text"])])
     return result

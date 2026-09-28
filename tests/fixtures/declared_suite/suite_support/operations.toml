@@ -1,0 +1,36 @@
+# Operation registry: what each implementation runs for each operation.
+# Paths are relative to the project root (this suite, per rack.toml).
+
+[dispatch]
+python = { file = "suite_support/adapters.py", after = "class ReferenceAdapter" }
+shadow = { file = "suite_support/adapters.py", after = "class ShadowAdapter" }
+
+[operations.ParseDuration]
+result = "DurationResult"
+
+[operations.ParseDuration.python]
+handler = { file = "suite_support/adapters.py", module = "suite_support.adapters", function = "_parse" }
+calls = [
+    { file = "suite_support/durations.py", module = "suite_support.durations", function = "parse_duration" },
+]
+
+[operations.ParseDuration.shadow]
+handler = { file = "suite_support/adapters.py", module = "suite_support.adapters", function = "_parse_shadow" }
+calls = [
+    { file = "suite_support/durations.py", module = "suite_support.durations", function = "parse_duration_shadow" },
+]
+
+[operations.FormatDuration]
+result = "FormattedDuration"
+
+[operations.FormatDuration.python]
+handler = { file = "suite_support/adapters.py", module = "suite_support.adapters", function = "_format" }
+calls = [
+    { file = "suite_support/durations.py", module = "suite_support.durations", function = "format_duration" },
+]
+
+[operations.FormatDuration.shadow]
+handler = { file = "suite_support/adapters.py", module = "suite_support.adapters", function = "_format" }
+calls = [
+    { file = "suite_support/durations.py", module = "suite_support.durations", function = "format_duration" },
+]

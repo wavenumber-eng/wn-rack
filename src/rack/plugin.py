@@ -26,7 +26,7 @@ from typing import Any
 
 import pytest
 
-from rack.code_refs import declaration_code_problems, project_root
+from rack.code_refs import project_root
 from rack.declarations import (
     Case,
     DeclarationError,
@@ -48,6 +48,7 @@ from rack.outcomes import (
     compare_exact,
     difference_to_dict,
 )
+from rack.tracing import trace_problems
 
 CHECK_IMPLEMENTATION = "check"
 DEFAULT_LANES = ("fast", "full", "strict")
@@ -451,7 +452,9 @@ def _check_lanes(suite: Suite, declaration: TestDeclaration, cases: tuple[Case, 
 
 
 def _check_code(suite: Suite, declaration: TestDeclaration) -> None:
-    problems = declaration_code_problems(suite.project_root(), declaration)
+    # The trace is static (registry, dispatch lines, handlers, library code), so
+    # a broken hop fails collection before any row runs.
+    problems = trace_problems(declaration)
     if problems:
         raise DeclarationError(f"{declaration.path.name}: " + "; ".join(problems))
 
@@ -462,6 +465,10 @@ def _suite_for(config: pytest.Config, path: Path) -> Suite:
     if manifest not in suites:
         with manifest.open("rb") as handle:
             suites[manifest] = Suite(manifest.parent, tomllib.load(handle))
+        # Test modules import suite code (operation types, helpers) from the
+        # suite root, as registrations do.
+        if str(manifest.parent) not in sys.path:
+            sys.path.append(str(manifest.parent))
     return suites[manifest]
 
 

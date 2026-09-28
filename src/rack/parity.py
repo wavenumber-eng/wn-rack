@@ -15,6 +15,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from rack.audit import audit_suite
+from rack.tracing import declared_calls
 from rack.declarations import (
     STATUSES,
     DeclarationError,
@@ -35,7 +36,7 @@ DECLARATION_AUDIT_CODES = frozenset(
         "invalid_cases",
         "invalid_declaration",
         "test_module_import",
-        "unresolved_code",
+        "untraced",
     }
 )
 
@@ -148,11 +149,10 @@ def _declared_entry(stratum: str, path: Path, default_concerns: tuple[str, ...])
             if entry.status != "implemented"
         },
         code={
-            entry.name: tuple(
-                {"file": ref.file, "module": ref.module, "function": ref.function}
-                for ref in entry.code
+            name: tuple(
+                {"file": ref.file, "module": ref.module, "function": ref.function} for ref in refs
             )
-            for entry in declaration.implementations
+            for name, refs in declared_calls(declaration).items()
         },
         deferred=declaration.deferred_issues,
         case_count=_case_count(declaration),

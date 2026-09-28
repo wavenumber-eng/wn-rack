@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from rack.code_refs import check_code_ref, declaration_code_problems
+from rack.code_refs import check_code_ref, locate_code_ref
 from rack.declarations import (
     CodeRef,
     DeclarationError,
@@ -24,20 +24,12 @@ VALID = """RACK = {
         "because": "Schedules built on a wrong parse miss every deadline.",
     },
     "concerns": ["time.parse"],
+    "operations": ["ParseDuration"],
     "cases": {"file": "vectors/L1_012_parse_duration.json"},
     "observation": "DurationResult",
     "expect": {"source": "contract", "comparator": "exact"},
     "implementations": {
-        "python": {
-            "status": "implemented",
-            "code": [
-                {
-                    "file": "src/clockwork/durations.py",
-                    "module": "clockwork.durations",
-                    "function": "parse_duration",
-                },
-            ],
-        },
+        "python": {"status": "implemented"},
         "rust": {"status": "planned", "reason": "not ported yet", "issue": "#41"},
         "cpp": {"status": "suspended", "reason": "C++ port paused by policy"},
         "wasm": {"status": "not_applicable", "reason": "no WASM target"},
@@ -84,10 +76,7 @@ def test_valid_declaration_reads_statuses_and_deferrals(tmp_path: Path) -> None:
     ]
     rust = declaration.status_of("rust")
     assert rust is not None and rust.issue == "#41"
-    python = declaration.status_of("python")
-    assert python is not None and python.code == (
-        CodeRef("src/clockwork/durations.py", "clockwork.durations", "parse_duration"),
-    )
+    assert declaration.operations == ("ParseDuration",)
     assert declaration.checks == "Duration strings parse to whole seconds."
     (difference,) = declaration.deferred["python"]["fractional_hours"]
     assert difference.path == ("seconds",) and difference.expected == 5400
@@ -128,11 +117,16 @@ def test_valid_declaration_reads_statuses_and_deferrals(tmp_path: Path) -> None:
         ),
         ('"reason": "C++ port paused by policy"', '"why": "paused"', "unknown keys"),
         ('"reason": "no WASM target"', '"reason": " "', "needs a reason"),
-        ('"function": "parse_duration",', "", "exactly file, module, and function"),
         (
-            '"status": "implemented",\n            "code": [',
-            '"status": "implemented",\n            "unused": [',
+            '"python": {"status": "implemented"}',
+            '"python": {"status": "implemented", "code": []}',
             "unknown keys",
+        ),
+        ('"operations": ["ParseDuration"],', "", "operations must list"),
+        (
+            '"operations": ["ParseDuration"],',
+            '"operations": ["ParseDuration", "ParseDuration"],',
+            "operations must list",
         ),
         ('"comparator": "exact"', '"compare": "exact"', "comparator is required"),
         ('"source": "contract"', '"source": "authority"', "needs expect.loader"),
@@ -370,21 +364,11 @@ def test_code_refs_resolve_by_reading_the_declared_file(
         assert result is not None and problem in result
 
 
-def test_suspended_code_is_verified_and_planned_code_is_not(tmp_path: Path) -> None:
-    project = write_project(tmp_path / "project")
-    source = VALID.replace(
-        '{"status": "suspended", "reason": "C++ port paused by policy"}',
-        '{"status": "suspended", "reason": "C++ port paused by policy", "code": ['
-        '{"file": "src/cpp/src/durations.cpp", "module": "clockwork::durations", '
-        '"function": "parse_seconds"}]}',
-    ).replace(
-        '{"status": "planned", "reason": "not ported yet", "issue": "#41"}',
-        '{"status": "planned", "reason": "not ported yet", "issue": "#41", "code": ['
-        '{"file": "src/rs/none.rs", "module": "none", "function": "later"}]}',
+def test_code_refs_report_the_definition_line(tmp_path: Path) -> None:
+    project = write_project(tmp_path)
+
+    assert locate_code_ref(project, CodeRef(PY, "clockwork.durations", "parse_duration")).line == 6
+    assert locate_code_ref(project, CodeRef(RS, "clock_work::durations", "Parser::parse")).line == 4
+    assert (
+        locate_code_ref(project, CodeRef(CPP, "clockwork::durations", "Parser::parse")).line == 15
     )
-    declaration = read_declaration(write_test(tmp_path, source))
-
-    problems = declaration_code_problems(project, declaration)
-
-    assert [problem.split(":")[0] for problem in problems] == ["python", "cpp"]
-    assert "defines no parse_seconds" in problems[1]

@@ -130,3 +130,24 @@ functions = ["worker_progress_file"]
 [[subtests.code_under_test]]
 module = "rack.progress_cli"
 classes = ["ProgressTailer"]
+
+[[subtests]]
+id = "L1_008"
+file = "test_L1_008_tracing.py"
+name = "Operation Tracing"
+description = "Trace self-declared tests through the operation registry to dispatch lines, handlers, and library code, and print the chain"
+concerns = ["self_hosting", "declarations", "tracing"]
+test_case_type = "synthetic"
+test_cases = "../fixtures/declared_suite"
+
+[[subtests.code_under_test]]
+module = "rack.tracing"
+functions = ["load_registry", "operations_constructed", "trace_declaration", "trace_problems", "declared_calls"]
+
+[[subtests.code_under_test]]
+module = "rack.trace_cli"
+functions = ["cmd_trace", "format_trace", "trace_to_json"]
+
+[[subtests.code_under_test]]
+module = "rack.code_refs"
+functions = ["locate_code_ref", "unreferenced_calls", "find_dispatch_line"]

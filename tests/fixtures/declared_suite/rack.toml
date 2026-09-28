@@ -19,6 +19,9 @@ adapter = "suite_support.adapters:ReferenceAdapter"
 [implementations.shadow]
 adapter = "suite_support.adapters:ShadowAdapter"
 
+[operations]
+registry = "suite_support/operations.toml"
+
 [catalogs]
 "fixture.vector_files" = "suite_support.catalogs:vector_files"
 

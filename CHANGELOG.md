@@ -15,6 +15,12 @@
   `require_declared = true`. The JSON report moves to `rack.audit_report`
   `a1` with a `declarations` section.
 - Rack's own legacy modules are excluded from `ruff format`.
+- Code tracing moves to one operation registry: tests declare the operations
+  they send (`RACK["operations"]`), and the registry records each
+  implementation's dispatch file, handler, and library calls. Rack verifies
+  the whole chain statically (audit code `untraced`, also at collection) and
+  `rack trace` prints it with file and line numbers. Per-implementation `code`
+  in test declarations is removed.
 - Add self-declared tests (in progress on the `altium-monkey` branch): a test
   file carries a `RACK = {...}` literal and one `run(case, impl)` entry point.
   `rack.declarations` reads and validates declarations and JSON vector files

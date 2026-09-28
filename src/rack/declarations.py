@@ -41,6 +41,7 @@ REQUIREMENTS = (
     "kind",
     "entry_point",
     "implementations",
+    "operations",
     "expect",
     "cases_ref",
     "deferrals",
@@ -56,6 +57,7 @@ _KNOWN_KEYS = frozenset(
         "observation",
         "expect",
         "implementations",
+        "operations",
         "purpose",
         "deferred",
         "objectives",
@@ -73,10 +75,10 @@ class DeclarationError(ValueError):
 
 @dataclass(frozen=True)
 class CodeRef:
-    """One function an implementation exercises, and the file that defines it.
+    """A function and the file that defines it, as the operation registry names it.
 
     ``file`` is relative to the suite's project root. ``function`` is a plain
-    name or ``Type.method`` (Python) / ``Type::method`` (Rust).
+    name or ``Type.method`` (Python) / ``Type::method`` (Rust, C++).
     """
 
     file: str
@@ -90,7 +92,6 @@ class ImplementationStatus:
     status: str
     reason: str = ""
     issue: str = ""
-    code: tuple[CodeRef, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -122,6 +123,11 @@ class TestDeclaration:
     def cases(self) -> Mapping[str, object]:
         value = self.raw.get("cases", {})
         return value if isinstance(value, Mapping) else {}
+
+    @property
+    def operations(self) -> tuple[str, ...]:
+        """The registry operations ``run`` sends through ``impl.batch``."""
+        return tuple(str(value) for value in _as_list(self.raw.get("operations", [])))
 
     @property
     def expect(self) -> Mapping[str, object]:
@@ -198,14 +204,18 @@ def manifest_entries(directory: Path) -> dict[str, dict[str, object]]:
 
 def manifest_entry(declaration: TestDeclaration) -> dict[str, object]:
     """The subtest entry Rack reports for a self-declared file."""
+    # Imported here: tracing builds on declarations.
+    from rack.tracing import declared_calls
+
     raw = declaration.raw
     cases = declaration.cases
+    calls = declared_calls(declaration)
     return {
         "id": declaration.id,
         "name": declaration.title or declaration.path.name,
         "description": declaration.checks,
         "concerns": list(declaration.concerns),
-        "code_under_test": _python_code_blocks(declaration),
+        "code_under_test": _python_code_blocks(calls),
         "objectives": raw.get("objectives", {}),
         "approach": raw.get("approach", {}),
         "test_functions": {},
@@ -217,6 +227,7 @@ def manifest_entry(declaration: TestDeclaration) -> dict[str, object]:
         "rack": {
             "kind": declaration.kind,
             "purpose": {"checks": declaration.checks, "because": declaration.because},
+            "operations": list(declaration.operations),
             "cases": dict(cases),
             "expect_source": str(declaration.expect.get("source", "")),
             "implementations": {
@@ -226,7 +237,7 @@ def manifest_entry(declaration: TestDeclaration) -> dict[str, object]:
                     "issue": entry.issue,
                     "code": [
                         {"file": ref.file, "module": ref.module, "function": ref.function}
-                        for ref in entry.code
+                        for ref in calls.get(entry.name, [])
                     ],
                 }
                 for entry in declaration.implementations
@@ -238,11 +249,11 @@ def manifest_entry(declaration: TestDeclaration) -> dict[str, object]:
     }
 
 
-def _python_code_blocks(declaration: TestDeclaration) -> list[dict[str, object]]:
-    """Legacy ``code_under_test`` blocks for the Python code a test declares."""
+def _python_code_blocks(calls: Mapping[str, list[CodeRef]]) -> list[dict[str, object]]:
+    """Legacy ``code_under_test`` blocks for the Python code a test exercises."""
     blocks: dict[str, dict[str, list[str]]] = {}
-    for entry in declaration.implementations:
-        for ref in entry.code:
+    for refs in calls.values():
+        for ref in refs:
             if not ref.file.endswith(".py"):
                 continue
             block = blocks.setdefault(ref.module, {"functions": [], "classes": [], "methods": []})
@@ -305,6 +316,7 @@ def _evaluate(path: Path) -> tuple[dict[str, object], dict[str, str]]:
         ("kind", lambda: _check_kind(path, kind)),
         ("entry_point", lambda: _check_entry_point(path, tree)),
         ("implementations", lambda: _parse_implementations(path, raw, kind)),
+        ("operations", lambda: _check_operations(path, raw, kind)),
         ("expect", lambda: _check_expect(path, raw)),
         ("cases_ref", lambda: _check_cases_ref(path, raw)),
     ]
@@ -502,8 +514,7 @@ def _parse_implementations(
     return tuple(_parse_status(path, str(name), entry) for name, entry in value.items())
 
 
-_STATUS_KEYS = frozenset({"status", "reason", "issue", "code"})
-_CODE_KEYS = frozenset({"file", "module", "function"})
+_STATUS_KEYS = frozenset({"status", "reason", "issue"})
 
 
 def _parse_status(path: Path, name: str, entry: object) -> ImplementationStatus:
@@ -515,31 +526,28 @@ def _parse_status(path: Path, name: str, entry: object) -> ImplementationStatus:
     status = str(entry["status"])
     reason = _text(entry.get("reason", ""))
     issue = _text(entry.get("issue", ""))
-    code = _parse_code(path, name, entry.get("code", []))
-    if status == "implemented" and not code:
-        raise DeclarationError(f"{path.name}: implemented {name} must declare its code")
     if status != "implemented" and not reason.strip():
         raise DeclarationError(f"{path.name}: {status} {name} needs a reason")
     if status == "planned" and not issue:
         raise DeclarationError(f"{path.name}: planned {name} needs an issue")
-    return ImplementationStatus(name, status, reason, issue, code)
+    return ImplementationStatus(name, status, reason, issue)
 
 
-def _parse_code(path: Path, name: str, value: object) -> tuple[CodeRef, ...]:
-    if not isinstance(value, list):
-        raise DeclarationError(f"{path.name}: {name} code must be a list")
-    refs: list[CodeRef] = []
-    for item in value:
-        if (
-            not isinstance(item, dict)
-            or set(item) != _CODE_KEYS
-            or not all(isinstance(item[key], str) and item[key].strip() for key in _CODE_KEYS)
-        ):
-            raise DeclarationError(
-                f"{path.name}: {name} code entries need exactly file, module, and function"
-            )
-        refs.append(CodeRef(item["file"], item["module"], item["function"]))
-    return tuple(refs)
+def _check_operations(path: Path, raw: Mapping[str, object], kind: str) -> None:
+    value = raw.get("operations")
+    if kind == "check":
+        if value is not None:
+            raise DeclarationError(f"{path.name}: a check sends no operations")
+        return
+    if (
+        not isinstance(value, list)
+        or not value
+        or not all(isinstance(item, str) and item.strip() for item in value)
+        or len(set(value)) != len(value)
+    ):
+        raise DeclarationError(
+            f"{path.name}: operations must list the registry operations run sends"
+        )
 
 
 def _text(value: object) -> str:

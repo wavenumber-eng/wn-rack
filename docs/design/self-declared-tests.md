@@ -67,30 +67,13 @@ RACK = {
         "because": "Schedules built on a wrong parse miss every deadline.",
     },
     "concerns": ["time.parse"],
+    "operations": ["ParseDuration"],
     "cases": {"file": "vectors/L1_012_parse_duration.json"},
     "observation": "DurationResult",
     "expect": {"source": "contract", "comparator": "exact"},
     "implementations": {
-        "python": {
-            "status": "implemented",
-            "code": [
-                {
-                    "file": "src/py/clockwork/durations.py",
-                    "module": "clockwork.durations",
-                    "function": "parse_duration",
-                },
-            ],
-        },
-        "rust": {
-            "status": "implemented",
-            "code": [
-                {
-                    "file": "src/rs/clockwork/src/durations.rs",
-                    "module": "clockwork::durations",
-                    "function": "parse_duration",
-                },
-            ],
-        },
+        "python": {"status": "implemented"},
+        "rust": {"status": "implemented"},
         "cpp": {"status": "suspended", "reason": "C++ port paused by project policy"},
     },
     "deferred": {
@@ -127,19 +110,10 @@ Rules Rack enforces:
 - Every implementation has `status` (`implemented`, `planned`, `suspended`,
   `not_applicable`). Anything but `implemented` needs a `reason`; `planned`
   also needs an `issue`.
-- An `implemented` implementation declares its `code`: each entry names a
-  `file` relative to the project root, the `module` that file is, and a
-  `function` (`Type.method` in Python, `Type::method` in Rust). Rack verifies
-  every entry by reading only that file: the Python checker parses it and
-  finds the definition; the Rust checker matches the module path to the file
-  under its package's `src`, the crate to the package's `Cargo.toml`, and
-  finds the `fn`; the C++ checker requires the file to open the declared
-  namespace (the `module`) and to define the function or `Type::method`.
-  Other file types fail. A wrong entry fails `rack audit` (`unresolved_code`)
-  and fails the test file's collection.
-- A `suspended` implementation lists its `code` while that code exists, and
-  Rack verifies it the same way, so suspended code cannot disappear or move
-  unnoticed. `planned` code is optional and unchecked; it may not exist yet.
+- `operations` lists the registry operations `run` sends through
+  `impl.batch`. Rack reads the module and requires `run` and its helpers to
+  construct exactly those. Which code each implementation runs for an
+  operation lives once, in the suite's operation registry (see Tracing).
 - No file may import from a test file. Shared helpers live in helper modules
   that contain no tests. `rack audit` checks imports statically.
 
@@ -173,6 +147,50 @@ input) is a typed result and part of the observation. A transport, build,
 crash, or timeout fault raises and becomes the `error` outcome.
 
 Rows are pytest items, so conftest fixtures still apply to services.
+
+## Tracing
+
+`rack.toml` names one operation registry (`[operations] registry`, relative
+to the project root). For each operation and implementation it records the
+handler that runs the operation and the library functions the handler calls;
+`[dispatch]` names each implementation's dispatch file (optionally with an
+`after` marker when one file holds several tables):
+
+```toml
+[dispatch]
+python = "tests/common/rack_adapters.py"
+rust = "src/rs/runner/src/operations.rs"
+
+[operations.ParseDuration]
+wire = "time.parse_duration"
+result = "DurationResult"
+
+[operations.ParseDuration.python]
+handler = { file = "tests/common/rack_adapters.py", module = "tests.common.rack_adapters", function = "_parse_duration" }
+calls = [{ file = "src/py/clockwork/durations.py", module = "clockwork.durations", function = "parse_duration" }]
+
+[operations.ParseDuration.rust]
+handler = { file = "src/rs/runner/src/time.rs", module = "runner::time", function = "parse_duration" }
+calls = [{ file = "src/rs/clockwork/src/durations.rs", module = "clockwork::durations", function = "parse_duration" }]
+```
+
+Rack checks the chain test -> operation -> dispatch line -> handler -> library
+function statically, reading only the named files:
+
+- `run` constructs exactly the declared `operations`, and each is registered;
+- each implemented implementation has a handler, and its dispatch file has a
+  non-definition line naming both the operation and the handler;
+- the handler exists, and it (or a same-file function it reaches) names every
+  call;
+- every call exists: Python by parsing the file, Rust by matching the module
+  path to the file under its package's `src`, the crate to `Cargo.toml`, and
+  the `fn`, C++ by the namespace the file opens and the definition. Other file
+  types fail.
+
+Suspended implementations list their `calls` while that code exists, and those
+are verified too; planned ones are shown but not checked. A broken hop fails
+`rack audit` (`untraced`) and the test file's collection. `rack trace L1_012`
+prints the chain with the file and line of every hop.
 
 ## Cases and vector files
 

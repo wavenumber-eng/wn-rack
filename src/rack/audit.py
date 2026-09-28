@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from rack.code_refs import declaration_code_problems, project_root
+from rack.code_refs import project_root
 from rack.declaration_tally import DeclarationTally, require_declared, tally_declarations
 from rack.declarations import (
     DeclarationError,
@@ -21,6 +21,7 @@ from rack.declarations import (
     load_vector_file,
     validate_deferrals,
 )
+from rack.tracing import trace_problems
 
 AUDIT_REPORT_TYPE = "rack.audit_report"
 AUDIT_REPORT_VERSION = "a1"
@@ -533,10 +534,10 @@ def _validate_declared_code(
     declaration: TestDeclaration,
     failures: list[AuditFailure],
 ) -> None:
-    for problem in declaration_code_problems(project, declaration):
+    for problem in trace_problems(declaration):
         failures.append(
             _failure(
-                "unresolved_code",
+                "untraced",
                 f"{declaration.path.name}: {problem}",
                 _relative(root, declaration.path),
                 stratum=stratum,

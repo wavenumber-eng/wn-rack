@@ -212,14 +212,25 @@ def test_invalid_declarations_fail_collection(tmp_path: Path) -> None:
     assert result.returncode != 0
     assert "case lanes ['nightly']" in result.stdout
 
-    # Declared code that does not exist fails collection, not just the audit.
+    # A broken trace fails collection, not just the audit: a registry call that
+    # does not exist, and one the handler never makes.
     suite = copy_suite(tmp_path / "third")
-    replace_in(suite / TEST_L0_001, '"function": "parse_duration_shadow"', '"function": "gone"')
+    registry = suite / "suite_support" / "operations.toml"
+    replace_in(registry, 'function = "parse_duration_shadow"', 'function = "gone"')
 
     result, _rows = run_suite(suite)
 
     assert result.returncode != 0
     assert "shadow: suite_support/durations.py defines no gone" in result.stdout
+
+    suite = copy_suite(tmp_path / "fourth")
+    registry = suite / "suite_support" / "operations.toml"
+    replace_in(registry, 'function = "parse_duration_shadow"', 'function = "format_duration"')
+
+    result, _rows = run_suite(suite)
+
+    assert result.returncode != 0
+    assert "shadow: handler _parse_shadow never calls format_duration" in result.stdout
 
 
 def test_legacy_file_mentioning_rack_text_is_not_captured(tmp_path: Path) -> None:
@@ -237,13 +248,16 @@ def test_legacy_file_mentioning_rack_text_is_not_captured(tmp_path: Path) -> Non
     assert rows["test_mentions_rack"][:2] == ("passed", "")
 
 
-BUDGET_TEST = """RACK = {
+BUDGET_TEST = """from suite_support.operations import ParseDuration
+
+RACK = {
     "id": "L0_005",
     "title": "Duration parsing budget",
     "purpose": {
         "checks": "Parsing stays within its time budget.",
         "because": "A slow parser stalls every caller that loads schedules.",
     },
+    "operations": ["ParseDuration"],
     "cases": {"file": "vectors/L0_001_parse_duration.json"},
     "expect": {
         "source": "budget",
@@ -253,14 +267,14 @@ BUDGET_TEST = """RACK = {
         "relative_to": "python",
     },
     "implementations": {
-        "python": {"status": "implemented", "code": [{"file": "suite_support/durations.py", "module": "suite_support.durations", "function": "parse_duration"}]},
-        "shadow": {"status": "implemented", "code": [{"file": "suite_support/durations.py", "module": "suite_support.durations", "function": "parse_duration_shadow"}]},
+        "python": {"status": "implemented"},
+        "shadow": {"status": "implemented"},
     },
 }
 
 
 def run(case, impl):
-    return impl.batch([{"op": "parse_duration", "text": case.inputs["text"]}])
+    return impl.batch([ParseDuration(text=case.inputs["text"])])
 """
 
 

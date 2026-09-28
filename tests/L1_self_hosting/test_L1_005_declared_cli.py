@@ -66,7 +66,9 @@ def test_audit_tallies_declared_files_requirements_and_outliers(tmp_path: Path) 
     nested.parent.mkdir()
     nested.write_text("def test_nested():\n    pass\n", encoding="utf-8")
     replace_in(
-        suite / TEST_L0_001, '"function": "parse_duration_shadow"', '"function": "parse_hours"'
+        suite / TEST_L0_001,
+        '"operations": ["ParseDuration"]',
+        '"operations": ["ParseDuration", "FormatDuration"]',
     )
     replace_in(
         suite / UNITS / "test_L0_003_format_duration.py",
@@ -92,7 +94,7 @@ def test_audit_tallies_declared_files_requirements_and_outliers(tmp_path: Path) 
     failing = {name: files for name, files in tally.requirements if files}
     assert failing == {
         "purpose": ("L0_units/test_L0_003_format_duration.py",),
-        "code": ("L0_units/test_L0_001_parse_duration.py",),
+        "trace": ("L0_units/test_L0_001_parse_duration.py",),
     }
 
 
@@ -127,8 +129,10 @@ def break_vectors(suite: Path) -> None:
     )
 
 
-def break_code(suite: Path) -> None:
-    replace_in(suite / TEST_L0_001, '"function": "parse_duration"', '"function": "parse_hours"')
+def break_trace(suite: Path) -> None:
+    replace_in(
+        suite / TEST_L0_001, '"operations": ["ParseDuration"]', '"operations": ["FormatDuration"]'
+    )
 
 
 def duplicate_id(suite: Path) -> None:
@@ -155,7 +159,7 @@ def declared_imports_test(suite: Path) -> None:
         (add_manifest_entry, ["declared_file_in_manifest"]),
         (break_declaration, ["invalid_declaration"]),
         (break_vectors, ["invalid_cases"]),
-        (break_code, ["unresolved_code"]),
+        (break_trace, ["untraced", "untraced"]),
         (duplicate_id, ["duplicate_test_id"]),
         (helper_imports_test, ["test_module_import"]),
         (declared_imports_test, ["test_module_import"]),

@@ -66,6 +66,7 @@ from rack.parallel import xdist_arguments
 from rack.parity import build_parity
 from rack.parity_cli import cmd_parity
 from rack.parity_html import render_parity_html
+from rack.trace_cli import cmd_trace
 from rack.parser import build_parser
 from rack.progress import build_progress_environment, make_run_id
 from rack.progress_cli import (
@@ -3872,6 +3873,8 @@ def main(argv: list[str] | None = None):
         return cmd_audit(args, TESTS_DIR)
     elif args.command == "parity":
         return cmd_parity(args, TESTS_DIR, RESULTS_DIR, get_strata())
+    elif args.command == "trace":
+        return cmd_trace(args, TESTS_DIR, get_strata())
     elif args.command == "version":
         return cmd_version(args)
     elif args.command == "new":

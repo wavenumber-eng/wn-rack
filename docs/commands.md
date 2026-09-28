@@ -237,8 +237,8 @@ Behavior:
   legacy test files are not checked
 - reports every failing declaration requirement separately
   (`invalid_declaration`, message prefixed with the requirement)
-- checks each implemented implementation's declared `code` by reading the
-  named file (`unresolved_code`)
+- traces each self-declared test through the operation registry: declared
+  operations, dispatch lines, handlers, and library calls (`untraced`)
 - fails every file without `RACK` in a stratum whose `STRATUM.toml` sets
   `require_declared = true` (`undeclared_test_file`)
 - requires the conventional `L99_signoff` stratum unless overridden with
@@ -283,6 +283,20 @@ Behavior:
 
 JSON output uses the `rack.parity_report` `a0` contract at
 `docs/contracts/rack_parity_report.a0.schema.json`.
+
+## `rack trace`
+
+Show exactly what each implementation runs for a self-declared test.
+
+```bash
+rack trace L0_004
+rack trace L0 --format json
+```
+
+For every operation the test declares, and every implementation, it prints the
+dispatch line, the handler, and the library functions called, each with its
+file and line, plus the status and reason of implementations that do not run.
+A broken hop is printed as a problem and the command exits `1`.
 
 ## `rack new stratum`
 
