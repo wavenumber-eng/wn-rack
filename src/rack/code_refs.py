@@ -28,6 +28,8 @@ class Located:
 
     line: int = 0
     problem: str | None = None
+    # "class" when a Python reference names a class; empty otherwise.
+    kind: str = ""
 
 
 def project_root(suite_root: Path, config: Mapping[str, object]) -> Path:
@@ -130,7 +132,7 @@ def _python_symbol(body: list[ast.stmt], ref: CodeRef) -> Located:
         body = classes[0].body
     for node in body:
         if _defines(node, name):
-            return Located(line=node.lineno)
+            return Located(line=node.lineno, kind="class" if isinstance(node, ast.ClassDef) else "")
     return Located(problem=f"{ref.file} defines no {ref.function}")
 
 

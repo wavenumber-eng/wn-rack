@@ -14,6 +14,7 @@ import base64
 import functools
 import json
 import re
+import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -253,7 +254,7 @@ def manifest_entry(declaration: TestDeclaration) -> dict[str, object]:
         "name": declaration.title or declaration.path.name,
         "description": declaration.checks,
         "concerns": list(declaration.concerns),
-        "code_under_test": _python_code_blocks(calls),
+        "code_under_test": _python_code_blocks(calls, _project_root(declaration.path)),
         "objectives": raw.get("objectives", {}),
         "approach": raw.get("approach", {}),
         "test_functions": {},
@@ -292,8 +293,28 @@ def listed_code(declaration: TestDeclaration) -> dict[str, list[CodeRef]]:
     return {entry.name: list(entry.code) for entry in declaration.implementations if entry.code}
 
 
-def _python_code_blocks(calls: Mapping[str, list[CodeRef]]) -> list[dict[str, object]]:
-    """Legacy ``code_under_test`` blocks for the Python code a test exercises."""
+def _project_root(test_file: Path) -> Path:
+    """The project root code paths are relative to, for a test file in a stratum."""
+    # Imported here: code_refs builds on declarations.
+    from rack.code_refs import project_root
+
+    suite_root = test_file.parent.parent
+    config_path = suite_root / "rack.toml"
+    try:
+        with config_path.open("rb") as handle:
+            config = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError):
+        config = {}
+    return project_root(suite_root, config)
+
+
+def _python_code_blocks(calls: Mapping[str, list[CodeRef]], root: Path) -> list[dict[str, object]]:
+    """Legacy ``code_under_test`` blocks for the Python code a test exercises.
+
+    A plain name that the file defines as a class is reported as a class.
+    """
+    from rack.code_refs import locate_code_ref
+
     blocks: dict[str, dict[str, list[str]]] = {}
     for refs in calls.values():
         for ref in refs:
@@ -304,6 +325,8 @@ def _python_code_blocks(calls: Mapping[str, list[CodeRef]]) -> list[dict[str, ob
             if owner:
                 block["classes"].append(owner)
                 block["methods"].append(method)
+            elif locate_code_ref(root, ref).kind == "class":
+                block["classes"].append(ref.function)
             else:
                 block["functions"].append(ref.function)
     return [

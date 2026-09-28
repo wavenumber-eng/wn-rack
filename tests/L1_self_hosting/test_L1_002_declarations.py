@@ -12,6 +12,7 @@ from rack.declarations import (
     declaration_problems,
     is_self_declared,
     load_vector_file,
+    manifest_entry,
     read_declaration,
     validate_deferrals,
 )
@@ -499,3 +500,23 @@ def test_plain_test_runs_the_first_implementation_without_a_native_test(tmp_path
     )
     with pytest.raises(DeclarationError, match=r"implemented \['cpp'\] need a native test"):
         read_declaration(write_test(tmp_path, implemented))
+
+
+def test_manifest_entry_reports_a_listed_class_as_a_class(tmp_path: Path) -> None:
+    project = write_project(tmp_path)
+    (project / "pyproject.toml").write_text("[project]\nname = 'clockwork'\n", encoding="utf-8")
+    stratum = project / "tests" / "L1_time"
+    stratum.mkdir(parents=True)
+    source = VALID.replace(
+        '"python": {"status": "implemented"},',
+        '"python": {"status": "implemented", "code": ['
+        f'{{"file": "{PY}", "module": "clockwork.durations", "function": "Parser"}}, '
+        f'{{"file": "{PY}", "module": "clockwork.durations", "function": "parse_duration"}}]}},',
+    )
+    declaration = read_declaration(write_test(stratum, source))
+
+    blocks = manifest_entry(declaration)["code_under_test"]
+
+    assert blocks == [
+        {"module": "clockwork.durations", "classes": ["Parser"], "functions": ["parse_duration"]}
+    ]
