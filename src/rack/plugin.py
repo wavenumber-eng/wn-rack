@@ -50,6 +50,7 @@ from rack.outcomes import (
     difference_to_dict,
 )
 from rack.tracing import trace_problems
+from rack import status_rows
 
 CHECK_IMPLEMENTATION = "check"
 DEFAULT_LANES = ("fast", "full", "strict")
@@ -89,7 +90,51 @@ def pytest_runtest_makereport(
         longrepr = report.longrepr
         detail = str(longrepr[2]) if isinstance(longrepr, tuple) else str(longrepr)
         item.skip_recorded(detail.removeprefix("Skipped: "))
+    status = item.stash.get(status_rows.ROW_KEY, None)
+    if status is not None:
+        _report_status_row(item, status, report)
     return report
+
+
+def _report_status_row(
+    item: pytest.Item, status: ImplementationStatus, report: pytest.TestReport
+) -> None:
+    row = status_rows.declared_row(item)
+    settled = status_rows.settle(report, status)
+    if row is not None and isinstance(row[0], TestDeclaration) and settled is not None:
+        status_rows.record(item, row[0], status, *settled)
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Run or skip pytest-form rows by their RACK status (see rack.status_rows)."""
+    markers = _registered_markers(config)
+    selected = _selected_implementations(config)
+    for item in items:
+        row = status_rows.declared_row(item)
+        if row is None:
+            continue
+        declaration, name = row
+        blocked = status_rows.block_reason(declaration, name)
+        if blocked is not None or isinstance(declaration, str):
+            item.stash[status_rows.BLOCKED_KEY] = blocked or ""
+            continue
+        status = declaration.status_of(name)
+        assert status is not None
+        item.stash[status_rows.ROW_KEY] = status
+        item.add_marker(pytest.mark.rack_implementation(name))
+        if name in markers:
+            item.add_marker(getattr(pytest.mark, name))
+        status_rows.record(item, declaration, status, "")
+        reason = status_rows.skip_reason(status, selected)
+        if reason is not None:
+            item.add_marker(pytest.mark.skip(reason=reason))
+
+
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    blocked = item.stash.get(status_rows.BLOCKED_KEY, None)
+    if blocked is not None:
+        pytest.fail(blocked)
 
 
 def pytest_pycollect_makemodule(

@@ -307,15 +307,22 @@ RACK = {
     "implementations": {
         "python": {"status": "implemented"},
         "shadow": {"status": "implemented"},
+        "rust": {"status": "suspended", "reason": "port paused by policy"},
     },
 }
 
 VECTORS = Path(__file__).parent / "vectors" / "L0_001_parse_duration.json"
 CASES = json.loads(VECTORS.read_text(encoding="utf-8"))["cases"]
 
+
+def rust_parse_duration(text):
+    raise NotImplementedError("no Rust port")
+
+
 IMPLEMENTATIONS = {
     "python": durations.parse_duration,
     "shadow": durations.parse_duration_shadow,
+    "rust": rust_parse_duration,
 }
 
 
@@ -335,7 +342,32 @@ def test_pytest_form_files_are_collected_by_pytest_not_rack(tmp_path: Path) -> N
 
     result, rows = run_suite(suite)
 
-    # Plain pytest ids, plain assert failures: Rack is not in the loop.
-    assert rows["test_parse_duration[hours_and_minutes-shadow]"][0] == "passed"
-    assert rows["test_parse_duration[fractional_hours-shadow]"][0] == "failed"
+    # Plain pytest ids and plain assert failures: the test body is the test's.
+    assert rows["test_parse_duration[hours_and_minutes-shadow]"][:2] == ("passed", "pass")
+    assert rows["test_parse_duration[fractional_hours-shadow]"][:2] == ("failed", "fail")
     assert "assert 3600 == 5400" in result.stdout
+    # Rack only decides which rows run, from the RACK statuses.
+    assert rows["test_parse_duration[hours_and_minutes-rust]"] == (
+        "skipped",
+        "suspended",
+        "suspended: port paused by policy",
+    )
+
+    selected, rows = run_suite(suite, "--rack-impl", "rust")
+    assert rows["test_parse_duration[hours_and_minutes-rust]"][:2] == ("xfailed", "suspended")
+    assert rows["test_parse_duration[hours_and_minutes-python]"][:2] == ("skipped", "skipped")
+    assert selected.returncode == 0, selected.stdout + selected.stderr
+
+    plain = suite / "L0_units" / "test_L0_007_plain_parse.py"
+    text = plain.read_text(encoding="utf-8")
+    plain.write_text(
+        text.replace(
+            '    "rust": rust_parse_duration,\n',
+            '    "rust": rust_parse_duration,\n    "ghost": rust_parse_duration,\n',
+        ),
+        encoding="utf-8",
+    )
+    invalid, rows = run_suite(suite)
+    # The header no longer matches the table, so no row may run.
+    assert rows["test_parse_duration[hours_and_minutes-python]"][0] == "error"
+    assert "invalid RACK header" in invalid.stdout

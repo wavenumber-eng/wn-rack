@@ -395,9 +395,19 @@ def python_parse(text):
     return 0
 
 
-@pytest.mark.parametrize("implementation", ["python"])
+def cpp_parse(text):
+    raise NotImplementedError("no C++ runner")
+
+
+IMPLEMENTATIONS = {
+    "python": python_parse,
+    "cpp": cpp_parse,
+}
+
+
+@pytest.mark.parametrize("implementation", IMPLEMENTATIONS)
 def test_parse_duration(implementation):
-    assert python_parse("0s") == 0
+    assert IMPLEMENTATIONS[implementation]("0s") == 0
 """
 
 
@@ -430,6 +440,8 @@ def test_pytest_form_is_an_ordinary_test_with_a_header(tmp_path: Path) -> None:
             '"resources": "vectors"',
             "resources must be a list",
         ),
+        ('    "cpp": cpp_parse,\n', "", "must list the RACK implementations"),
+        ("IMPLEMENTATIONS = {", "IMPLEMENTATIONS_BY_NAME = {", "top-level"),
     ],
 )
 def test_pytest_form_rules_fail_closed(tmp_path: Path, old: str, new: str, message: str) -> None:

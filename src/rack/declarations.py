@@ -326,7 +326,7 @@ def _evaluate(path: Path) -> tuple[dict[str, object], dict[str, str]]:
         ("purpose", lambda: _parse_purpose(path, raw)),
         ("id", lambda: _check_id(path, raw)),
         ("kind", lambda: _check_kind(path, kind)),
-        ("entry_point", lambda: _check_entry_point(path, tree)),
+        ("entry_point", lambda: _check_entry_point(path, tree, raw)),
         ("implementations", lambda: _parse_implementations(path, raw, kind)),
         ("operations", lambda: _check_operations(path, raw, kind, pytest_form)),
         ("expect", lambda: _check_expect(path, raw, pytest_form)),
@@ -489,14 +489,17 @@ def declaration_form(tree: ast.Module) -> str:
     return "adapter" if "run" in names else "pytest"
 
 
-def _check_entry_point(path: Path, tree: ast.Module) -> str:
+def _check_entry_point(path: Path, tree: ast.Module, raw: Mapping[str, object]) -> str:
     if declaration_form(tree) == "pytest":
-        return _check_pytest_entry_point(path, tree)
+        _check_pytest_entry_point(path, tree)
+        if raw.get("kind", "test") == "test":
+            _check_implementations_table(path, tree, raw)
+        return "pytest"
     _check_adapter_entry_point(path, tree)
     return "adapter"
 
 
-def _check_pytest_entry_point(path: Path, tree: ast.Module) -> str:
+def _check_pytest_entry_point(path: Path, tree: ast.Module) -> None:
     tests = [
         node.name
         for node in tree.body
@@ -507,7 +510,48 @@ def _check_pytest_entry_point(path: Path, tree: ast.Module) -> str:
         raise DeclarationError(
             f"{path.name}: a test file has exactly one test_* function (found {tests})"
         )
-    return "pytest"
+
+
+def _check_implementations_table(path: Path, tree: ast.Module, raw: Mapping[str, object]) -> None:
+    """The file maps every declared implementation to its function, in header order.
+
+    Not-applicable implementations are left out; every other one, suspended and
+    planned included, has an entry so Rack can run it when it is selected.
+    """
+    keys = _implementations_table_keys(tree)
+    if keys is None:
+        raise DeclarationError(
+            f"{path.name}: map each implementation to its function in a top-level "
+            "IMPLEMENTATIONS = {...} dict"
+        )
+    declared = _runnable_names(raw.get("implementations"))
+    if keys != declared:
+        raise DeclarationError(
+            f"{path.name}: IMPLEMENTATIONS {keys} must list the RACK implementations "
+            f"{declared} in the same order"
+        )
+
+
+def _implementations_table_keys(tree: ast.Module) -> list[object] | None:
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "IMPLEMENTATIONS"
+            for target in node.targets
+        ):
+            if not isinstance(node.value, ast.Dict):
+                return None
+            return [key.value for key in node.value.keys if isinstance(key, ast.Constant)]
+    return None
+
+
+def _runnable_names(implementations: object) -> list[str]:
+    if not isinstance(implementations, dict):
+        return []
+    return [
+        str(name)
+        for name, entry in implementations.items()
+        if not (isinstance(entry, dict) and entry.get("status") == "not_applicable")
+    ]
 
 
 def _check_adapter_entry_point(path: Path, tree: ast.Module) -> None:
