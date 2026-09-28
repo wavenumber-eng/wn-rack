@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from rack.audit import audit_suite
+from rack.declaration_tally import tally_declarations
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_SUITE = ROOT / "tests" / "fixtures" / "declared_suite"
@@ -74,6 +75,7 @@ def test_audit_tallies_declared_files_requirements_and_outliers(tmp_path: Path) 
     )
 
     tally = audit_suite(suite, signoff_strata=("L0_units",)).declarations
+    targeted = audit_suite(suite, signoff_strata=("L0_units",), target_stratum="L0_units")
 
     assert tally is not None
     assert (tally.test_files, tally.self_declared, tally.without_rack) == (5, 4, 1)
@@ -81,6 +83,11 @@ def test_audit_tallies_declared_files_requirements_and_outliers(tmp_path: Path) 
     assert tally.outside_strata == (
         "L0_units/extra/test_L0_098_nested.py",
         "test_L0_099_loose.py",
+    )
+    assert targeted.declarations is not None
+    assert targeted.declarations.outside_strata == tally.outside_strata
+    assert tally_declarations(suite, [], [], registered=["L0_units"]).outside_strata == (
+        tally.outside_strata
     )
     failing = {name: files for name, files in tally.requirements if files}
     assert failing == {

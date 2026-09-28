@@ -94,9 +94,16 @@ class DeclarationTally:
 
 
 def tally_declarations(
-    root: Path, strata: Sequence[str], failures: Sequence[CodedFailure]
+    root: Path,
+    strata: Sequence[str],
+    failures: Sequence[CodedFailure],
+    registered: Sequence[str] | None = None,
 ) -> DeclarationTally:
-    """Count test files per stratum and the files failing each requirement."""
+    """Count test files per audited stratum and the files failing each requirement.
+
+    ``registered`` is every stratum in rack.toml (default: ``strata``); only files
+    outside all of them count as outside the strata.
+    """
     failing: dict[str, set[str]] = {name: set() for name in ALL_REQUIREMENTS}
     tallies: list[StratumTally] = []
     for stratum in strata:
@@ -112,7 +119,7 @@ def tally_declarations(
     return DeclarationTally(
         strata=tuple(tallies),
         requirements=tuple((name, tuple(sorted(failing[name]))) for name in ALL_REQUIREMENTS),
-        outside_strata=outside_strata(root, strata),
+        outside_strata=outside_strata(root, strata if registered is None else registered),
     )
 
 

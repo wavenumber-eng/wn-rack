@@ -115,7 +115,7 @@ def audit_suite(
         _validate_declared_suite(tests_root, project, selected_strata, strata, failures)
         if target_stratum is None:
             _validate_signoff_strata(tests_root, strata, configured_signoff, failures)
-        tally = tally_declarations(tests_root, selected_strata, failures)
+        tally = tally_declarations(tests_root, selected_strata, failures, registered=strata)
 
     return AuditReport(
         root=tests_root,
