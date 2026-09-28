@@ -172,9 +172,13 @@ test that reads the same vector file, for example a plain `cargo test`:
 "resources": ["vectors/L0_004_parse_byte_record.json"],
 ```
 
-Rack runs each native test as one row with the language's own runner
-(`cargo test -p <package> --test <file stem>` from the package directory) and
-records pass or fail and the runner's output. The native test knows nothing
+Rack runs each native test as one row with the language's own runner and
+records pass or fail and the runner's output. Rust tests are batched: one
+`cargo test --no-fail-fast -p <crate> --test <a> --test <b> ...` per crate
+and run (from the package directory), split per test binary, so cargo starts
+once and builds the binaries in parallel. Under pytest-xdist each row runs its
+own cargo call. With the naming convention, `cargo test --workspace -- l0_`
+also runs a whole stratum's Rust tests without Rack. The native test knows nothing
 about Rack or Python. Statuses decide what runs: implemented rows run; planned
 and suspended rows are skipped with their reason unless `--rack-impl` selects
 them, and then a failure is reported without failing the run.

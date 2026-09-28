@@ -424,7 +424,10 @@ def test_native_rust_test_is_one_cargo_row(tmp_path: Path) -> None:
     replace_in(rust_test, '"1h30m"), 5400', '"1h30m"), 5401')
     failed, rows = run_suite(suite)
     assert rows["L0_007[rust]"][:2] == ("failed", "fail")
-    assert "cargo test -p rust-durations --test test_l0_007_plain_parse" in failed.stdout
+    assert (
+        "cargo test --no-fail-fast -p rust-durations --test test_l0_007_plain_parse"
+        in failed.stdout
+    )
     assert "left: 5400" in failed.stdout
 
     replace_in(
@@ -434,3 +437,34 @@ def test_native_rust_test_is_one_cargo_row(tmp_path: Path) -> None:
     )
     _, rows = run_suite(suite)
     assert rows["L0_007[rust]"] == ("skipped", "suspended", "suspended: port paused")
+
+
+@pytest.mark.skipif(shutil.which("cargo") is None, reason="needs a Rust toolchain")
+def test_rust_tests_of_one_crate_run_in_one_cargo_call(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    units = suite / "L0_units"
+    (units / "test_L0_007_plain_parse.py").write_text(NATIVE_FORM_TEST, encoding="utf-8")
+    second = (
+        NATIVE_FORM_TEST.replace('"id": "L0_007"', '"id": "L0_008"')
+        .replace("test_l0_007_plain_parse.rs", "test_l0_008_plain_round_trip.rs")
+        .replace("def test_plain_parse", "def test_plain_round_trip")
+    )
+    (units / "test_L0_008_plain_round_trip.py").write_text(second, encoding="utf-8")
+    replace_in(
+        suite / "rust_durations" / "tests" / "test_l0_008_plain_round_trip.rs",
+        '"90m"), 5400',
+        '"90m"), 5401',
+    )
+
+    result, rows = run_suite(suite)
+
+    assert rows["L0_007[rust]"][:2] == ("passed", "pass")
+    assert rows["L0_008[rust]"][:2] == ("failed", "fail")
+    batch = (
+        "cargo test --no-fail-fast -p rust-durations "
+        "--test test_l0_007_plain_parse --test test_l0_008_plain_round_trip"
+    )
+    assert batch in result.stdout
+    # The failing row's message is its own binary's section, not the other's.
+    failure = result.stdout[result.stdout.index("L0_008[rust]") :]
+    assert "left: 5400" in failure and "right: 5401" in failure
