@@ -211,13 +211,21 @@ def test_cli_commands_read_declared_files() -> None:
     assert audited.returncode == 0, audited.stdout + audited.stderr
 
 
-def test_audit_holds_native_tests_to_the_naming_convention(tmp_path: Path) -> None:
-    suite = copy_suite(tmp_path)
+def native_form_test() -> str:
     source = (ROOT / "tests" / "L1_self_hosting" / "test_L1_004_plugin.py").read_text("utf-8")
     start = source.index('NATIVE_FORM_TEST = """') + len('NATIVE_FORM_TEST = """')
-    text = source[start : source.index('"""', start)]
+    return source[start : source.index('"""', start)]
+
+
+def native_messages(suite: Path) -> list[str]:
+    report = audit_suite(suite, signoff_strata=("L0_units",))
+    return [failure.message for failure in report.failures if failure.code == "native_test"]
+
+
+def test_audit_holds_native_tests_to_the_naming_convention(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
     plain = suite / UNITS / "test_L0_007_plain_parse.py"
-    plain.write_text(text, encoding="utf-8")
+    plain.write_text(native_form_test(), encoding="utf-8")
 
     assert audit_codes(suite) == []
 
@@ -225,25 +233,93 @@ def test_audit_holds_native_tests_to_the_naming_convention(tmp_path: Path) -> No
     (suite / "rust_durations" / "tests" / "test_l0_007_plain_parse.rs").rename(renamed)
     replace_in(plain, "test_l0_007_plain_parse.rs", "test_l0_007_parse.rs")
     replace_in(renamed, "fn l0_007_plain_parse", "fn parses")
-    report = audit_suite(suite, signoff_strata=("L0_units",))
 
-    messages = [failure.message for failure in report.failures if failure.code == "native_test"]
+    messages = native_messages(suite)
     assert any("must be named test_l0_007_plain_parse.rs" in m for m in messages)
-    assert any("must define fn l0_007_plain_parse" in m for m in messages)
+    assert any("must define #[test] fn l0_007_plain_parse" in m for m in messages)
     assert not any("does not read L0_001_parse_duration.json" in m for m in messages)
 
-    # An implemented native test must read the vector file; a suspended one may
-    # predate it.
-    replace_in(renamed, "L0_001_parse_duration.json", "another_file.json")
-    report = audit_suite(suite, signoff_strata=("L0_units",))
-    assert any("does not read L0_001_parse_duration.json" in f.message for f in report.failures)
+    # An implemented native test must name the vector file in a string literal;
+    # the doc comment that still names it does not count. A suspended test may
+    # predate the vector file.
+    replace_in(
+        renamed,
+        '"/../L0_units/vectors/L0_001_parse_duration.json"',
+        '"/../L0_units/vectors/another_file.json"',
+    )
+    assert any("does not read L0_001_parse_duration.json" in m for m in native_messages(suite))
     replace_in(
         plain,
         '"status": "implemented",\n            "test"',
         '"status": "suspended",\n            "reason": "port paused",\n            "test"',
     )
+    assert not any("does not read" in m for m in native_messages(suite))
+
+
+def test_audit_requires_a_test_attribute_and_existing_native_files(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    plain = suite / UNITS / "test_L0_007_plain_parse.py"
+    plain.write_text(native_form_test(), encoding="utf-8")
+    rust_test = suite / "rust_durations" / "tests" / "test_l0_007_plain_parse.rs"
+
+    replace_in(rust_test, "#[test]\n", "")
+    assert any("must define #[test] fn l0_007_plain_parse" in m for m in native_messages(suite))
+
+    # A suspended test keeps its file; a planned one may not exist yet.
+    rust_test.unlink()
+    replace_in(
+        plain,
+        '"status": "implemented",\n            "test"',
+        '"status": "suspended",\n            "reason": "port paused",\n            "test"',
+    )
+    assert any("test_l0_007_plain_parse.rs does not exist" in m for m in native_messages(suite))
+    replace_in(
+        plain,
+        '"status": "suspended",\n            "reason": "port paused"',
+        '"status": "planned",\n            "reason": "port next",\n            "issue": "#1"',
+    )
+    assert native_messages(suite) == []
+
+
+def test_audit_checks_the_resources_a_header_lists(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    plain = suite / UNITS / "test_L0_007_plain_parse.py"
+    plain.write_text(native_form_test(), encoding="utf-8")
+    vectors = suite / UNITS / "vectors" / "L0_001_parse_duration.json"
+
+    replace_in(
+        plain,
+        '"resources": ["vectors/L0_001_parse_duration.json"]',
+        '"resources": ["vectors/L0_001_parse_duration.json", "vectors/missing.json", '
+        '"reference/zero.json"]',
+    )
     report = audit_suite(suite, signoff_strata=("L0_units",))
-    assert not any("does not read" in f.message for f in report.failures)
+    problems = sorted(
+        (failure.code, failure.message)
+        for failure in report.failures
+        if failure.code in ("invalid_cases", "invalid_resource")
+    )
+
+    assert [code for code, _ in problems] == [
+        "invalid_cases",
+        "invalid_resource",
+        "invalid_resource",
+    ]
+    # A listed file must exist and be named by the test; JSON states its provenance.
+    assert "resource vectors/missing.json does not exist" in problems[1][1] + problems[2][1]
+    assert "does not name resource reference/zero.json" in problems[1][1] + problems[2][1]
+    assert "zero.json: provenance needs a kind" in problems[0][1]
+
+    replace_in(
+        plain,
+        ', "vectors/missing.json", "reference/zero.json"]',
+        "]",
+    )
+    payload = json.loads(vectors.read_text(encoding="utf-8"))
+    del payload["provenance"]
+    vectors.write_text(json.dumps(payload), encoding="utf-8")
+    report = audit_suite(suite, signoff_strata=("L0_units",))
+    assert [f.code for f in report.failures if f.subtest == plain.name] == ["invalid_cases"]
 
 
 def test_audit_resolves_code_listed_in_the_header(tmp_path: Path) -> None:

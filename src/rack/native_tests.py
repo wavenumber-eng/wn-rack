@@ -6,12 +6,18 @@ implementation's own language. Rack runs it with the language's own runner
 and records only pass or fail and the runner's output. The native test itself
 knows nothing about Rack.
 
+A Rust row passes only when cargo reports that the test function named by the
+convention (the file name without ``test_``) passed, so a file that defines no
+such test, or runs zero tests, fails.
+
 Rust tests are batched: the first row of a crate to run starts one
 ``cargo test --no-fail-fast -p <crate> --test <a> --test <b> ...`` for every
-selected Rust test of that crate, and each row reads its own test binary's
-section of the output. One cargo call per crate pays cargo's startup once and
-lets it build the test binaries in parallel. Under pytest-xdist a worker does
-not know which rows it will run, so each row runs its own cargo call.
+selected Rust test of that crate whose file exists, and each row reads its own
+test binary's section of the output. One cargo call per crate pays cargo's
+startup once and lets it build the test binaries in parallel. When a binary
+has no section (usually a build failure), it reruns alone, so one broken file
+does not fail its neighbors. Under pytest-xdist a worker does not know which
+rows it will run, so each row runs its own cargo call.
 """
 
 from __future__ import annotations
@@ -51,6 +57,8 @@ class CargoTarget:
 class TargetResult:
     passed: bool
     output: str
+    # False when cargo never ran the binary, usually because the build failed.
+    ran: bool = True
 
 
 _BATCHES = pytest.StashKey[dict[tuple[str, str], dict[str, TargetResult]]]()
@@ -71,10 +79,14 @@ class CargoTest(pytest.Item):
         self.declaration = declaration
         self.status = status
         self.project_root = project_root
-        # Read by status handling and reports: which header row this item is.
+        # Read by status handling and reports: which header row this item is,
+        # and the case it is recorded under.
         self.rack_native_row = (declaration, status.name)
+        self.rack_case = Path(status.test).name
 
     def runtest(self) -> None:
+        if not (self.project_root / self.status.test).is_file():
+            raise NativeTestFailure(f"{self.status.test} does not exist")
         target = cargo_target(self.project_root, self.status.test)
         result = self._result(target)
         if not result.passed:
@@ -86,14 +98,19 @@ class CargoTest(pytest.Item):
         batches = self.config.stash.setdefault(_BATCHES, {})
         key = (str(target.package_dir), target.package)
         if key not in batches:
-            batches[key] = run_cargo(target.package_dir, target.package, self._batch_stems(target))
+            stems = self._batch_stems(target)
+            batches[key] = run_cargo_batch(target.package_dir, target.package, stems)
         return batches[key][target.stem]
 
     def _batch_stems(self, target: CargoTarget) -> list[str]:
-        """Every selected, unskipped Rust test of this crate in the session."""
+        """Every selected, unskipped Rust test of this crate in the session whose file exists."""
         stems = {target.stem}
         for item in self.session.items:
-            if isinstance(item, CargoTest) and item.get_closest_marker("skip") is None:
+            if (
+                isinstance(item, CargoTest)
+                and item.get_closest_marker("skip") is None
+                and (item.project_root / item.status.test).is_file()
+            ):
                 other = cargo_target(item.project_root, item.status.test)
                 if (other.package_dir, other.package) == (target.package_dir, target.package):
                     stems.add(other.stem)
@@ -127,6 +144,15 @@ def cargo_target(project_root: Path, test: str) -> CargoTarget:
     return CargoTarget(package, manifest.parent, path.stem)
 
 
+def run_cargo_batch(package_dir: Path, package: str, stems: list[str]) -> dict[str, TargetResult]:
+    """``run_cargo`` for several binaries, rerunning alone any binary that never ran."""
+    results = run_cargo(package_dir, package, stems)
+    if len(stems) > 1:
+        for stem in [stem for stem in stems if not results[stem].ran]:
+            results[stem] = run_cargo(package_dir, package, [stem])[stem]
+    return results
+
+
 def run_cargo(package_dir: Path, package: str, stems: list[str]) -> dict[str, TargetResult]:
     """Run the named test binaries in one cargo call and split the result per binary."""
     command = ["cargo", "test", "--no-fail-fast", "-p", package]
@@ -149,12 +175,20 @@ def run_cargo(package_dir: Path, package: str, stems: list[str]) -> dict[str, Ta
     for stem in stems:
         section = sections.get(stem)
         if section is None:
-            # The binary never ran, usually because the build failed.
-            results[stem] = TargetResult(False, f"{header}\n{tail}")
+            results[stem] = TargetResult(False, f"{header}\n{tail}", ran=False)
         else:
-            passed = "test result: ok." in section
-            results[stem] = TargetResult(passed, f"{header}\n{section.strip()}")
+            results[stem] = _section_result(header, stem, section)
     return results
+
+
+def _section_result(header: str, stem: str, section: str) -> TargetResult:
+    function = stem.removeprefix("test_")
+    output = f"{header}\n{section.strip()}"
+    if not re.search(rf"^test {re.escape(function)} \.\.\. ok\s*$", section, re.MULTILINE):
+        if "test result: ok." in section:
+            output += f"\ncargo did not report a passing test named {function}"
+        return TargetResult(False, output)
+    return TargetResult("test result: ok." in section, output)
 
 
 def split_sections(output: str) -> dict[str, str]:

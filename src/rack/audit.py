@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import re
 import tomllib
 from collections.abc import Mapping, Sequence
@@ -13,9 +14,11 @@ from typing import cast
 from rack.code_refs import check_code_ref, project_root
 from rack.declaration_tally import DeclarationTally, require_declared, tally_declarations
 from rack.declarations import (
+    VECTOR_SCHEMA,
     DeclarationError,
     ImplementationStatus,
     TestDeclaration,
+    check_provenance,
     declaration_problems,
     declared_test_files,
     load_declaration,
@@ -28,6 +31,8 @@ AUDIT_REPORT_TYPE = "rack.audit_report"
 AUDIT_REPORT_VERSION = "a1"
 DEFAULT_SIGNOFF_STRATA = ("L99_signoff",)
 IGNORED_TEST_DIR_NAMES = {"__pycache__", "rack_results"}
+# Comments and string literals of Rust or C++ source, in source order.
+_NATIVE_TOKENS = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:[^"\\\n]|\\.)*"', re.DOTALL)
 
 
 @dataclass(frozen=True, slots=True)
@@ -521,12 +526,82 @@ def _validate_declared_suite(
             declaration = _read_declared(root, stratum, path, failures)
             if declaration is not None:
                 _validate_declared_cases(root, stratum, declaration, failures)
+                _validate_declared_resources(root, stratum, declaration, failures)
                 _validate_declared_code(root, project, stratum, declaration, failures)
                 _validate_native_tests(root, project, stratum, declaration, failures)
     selected_paths = {path.resolve() for s in selected for path in declared_test_files(root / s)}
     local = [d for d in declarations if d.path.resolve() in selected_paths]
     _validate_declared_ids(root, strata, declarations, local, failures)
     _validate_test_imports(root, selected, declarations, failures)
+
+
+def _validate_declared_resources(
+    root: Path, stratum: str, declaration: TestDeclaration, failures: list[AuditFailure]
+) -> None:
+    for code, problem in resource_problems(declaration):
+        failures.append(
+            _failure(
+                code,
+                f"{declaration.path.name}: {problem}",
+                _relative(root, declaration.path),
+                stratum=stratum,
+                subtest=declaration.path.name,
+            )
+        )
+
+
+def resource_problems(declaration: TestDeclaration) -> list[tuple[str, str]]:
+    """Each listed resource exists, a pytest test names it, and JSON states its provenance.
+
+    A JSON resource with the vector schema is checked as a vector file; any
+    other JSON resource, such as a captured authority file, needs a top-level
+    ``provenance``. Other files are checked for existence only.
+    """
+    source = _source_outside_header(declaration.path) if declaration.form == "pytest" else None
+    problems: list[tuple[str, str]] = []
+    for item in declaration.resources:
+        path = declaration.path.parent / item
+        if not path.is_file():
+            problems.append(("invalid_resource", f"resource {item} does not exist"))
+            continue
+        if source is not None and path.name not in source:
+            problems.append(("invalid_resource", f"the test does not name resource {item}"))
+        if path.suffix == ".json":
+            problems += [("invalid_cases", problem) for problem in _json_resource_problems(path)]
+    return problems
+
+
+def _json_resource_problems(path: Path) -> list[str]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        return [f"{path.name}: unreadable JSON ({error})"]
+    try:
+        if isinstance(payload, dict) and payload.get("schema") == VECTOR_SCHEMA:
+            load_vector_file(path)
+        else:
+            check_provenance(path, payload.get("provenance") if isinstance(payload, dict) else None)
+    except DeclarationError as error:
+        return [str(error)]
+    return []
+
+
+def _source_outside_header(path: Path) -> str:
+    """The test file's source without its RACK assignment."""
+    source = path.read_text(encoding="utf-8")
+    header = next(
+        (
+            node
+            for node in ast.parse(source).body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "RACK" for target in node.targets)
+        ),
+        None,
+    )
+    if header is None or header.end_lineno is None:
+        return source
+    lines = source.splitlines()
+    return "\n".join(lines[: header.lineno - 1] + lines[header.end_lineno :])
 
 
 def _validate_declared_code(
@@ -598,7 +673,8 @@ def _native_test_file_problems(
     if path.is_file():
         text = path.read_text(encoding="utf-8", errors="replace")
         problems += _native_content_problems(declaration, entry, text, expected_symbol)
-    elif entry.status == "implemented":
+    elif entry.status in ("implemented", "suspended"):
+        # A planned native test may not exist yet; a suspended one keeps its file.
         problems.append(f"{entry.name} test {entry.test} does not exist")
     return problems
 
@@ -607,19 +683,26 @@ def _native_content_problems(
     declaration: TestDeclaration, entry: ImplementationStatus, text: str, symbol: str
 ) -> list[str]:
     problems: list[str] = []
-    if symbol and f"fn {symbol}(" not in text:
-        problems.append(f"{entry.name} test {entry.test} must define fn {symbol}")
+    test_function = rf"#\[test\]\s*(?:#\[[^\]]*\]\s*)*fn {re.escape(symbol)}\s*\("
+    if symbol and re.search(test_function, text) is None:
+        problems.append(f"{entry.name} test {entry.test} must define #[test] fn {symbol}")
     # A suspended or planned test may predate the vector file; it must read it
     # once the implementation is implemented again.
     if entry.status != "implemented":
         return problems
+    literals = " ".join(native_string_literals(text))
     vectors = [Path(item).name for item in declaration.resources if item.endswith(".json")]
     problems += [
-        f"{entry.name} test {entry.test} does not read {name}"
+        f"{entry.name} test {entry.test} does not read {name} (named in a string literal)"
         for name in vectors
-        if name not in text
+        if name not in literals
     ]
     return problems
+
+
+def native_string_literals(text: str) -> list[str]:
+    """The string literals of Rust or C++ source, skipping comments."""
+    return [token[1:-1] for token in _NATIVE_TOKENS.findall(text) if token.startswith('"')]
 
 
 def native_test_names(declaration: TestDeclaration, suffix: str) -> tuple[str, str]:

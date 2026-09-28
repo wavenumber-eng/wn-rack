@@ -1,9 +1,10 @@
 """Static reading and validation of self-declared test files.
 
 A self-declared test file carries one top-level ``RACK = {...}`` literal,
-including the test's required purpose, and a single ``run(case, impl)`` entry
-point. Rack reads all of it with ``ast`` so listing, auditing, and accounting
-never import the test module.
+including the test's required purpose. It is an ordinary pytest test with one
+``test_*`` function, or, in the transitional adapter form, a single
+``run(case, impl)`` entry point. Rack reads all of it with ``ast`` so listing,
+auditing, and accounting never import the test module.
 """
 
 from __future__ import annotations
@@ -32,6 +33,8 @@ DIFFERENCE_KINDS = (
 )
 PROVENANCE_KINDS = ("authority", "specification", "generated")
 VECTOR_SCHEMA = "rack.cases.a0"
+# Keys only a run(case, impl) file uses; a plain pytest test does its own work.
+ADAPTER_ONLY_KEYS = ("cases", "observation", "expect", "operations", "deferred")
 # Every rule a declaration must meet, in the order `rack audit` reports them.
 REQUIREMENTS = (
     "rack_literal",
@@ -151,12 +154,22 @@ class TestDeclaration:
 
     @property
     def in_file(self) -> tuple[ImplementationStatus, ...]:
-        """Implementations this file's own test exercises (no native test, applicable)."""
+        """Implementations without a native test (applicable ones), in header order."""
         return tuple(
             entry
             for entry in self.implementations
             if not entry.test and entry.status != "not_applicable"
         )
+
+    @property
+    def own(self) -> ImplementationStatus | None:
+        """The implementation the file's test runs when it has no IMPLEMENTATIONS table.
+
+        It is the first implementation listed without a native test; later ones
+        without a test are counted only, since the header rules require them to
+        be not implemented.
+        """
+        return self.in_file[0] if self.in_file else None
 
     def status_of(self, implementation: str) -> ImplementationStatus | None:
         for entry in self.implementations:
@@ -234,8 +247,7 @@ def manifest_entry(declaration: TestDeclaration) -> dict[str, object]:
     raw = declaration.raw
     cases = declaration.cases
     # Code listed in the header wins; otherwise the adapter form's registry trace.
-    calls = {entry.name: list(entry.code) for entry in declaration.implementations if entry.code}
-    calls = calls or declared_calls(declaration)
+    calls = listed_code(declaration) or declared_calls(declaration)
     return {
         "id": declaration.id,
         "name": declaration.title or declaration.path.name,
@@ -273,6 +285,11 @@ def manifest_entry(declaration: TestDeclaration) -> dict[str, object]:
             },
         },
     }
+
+
+def listed_code(declaration: TestDeclaration) -> dict[str, list[CodeRef]]:
+    """The code each implementation's header entry lists, by implementation."""
+    return {entry.name: list(entry.code) for entry in declaration.implementations if entry.code}
 
 
 def _python_code_blocks(calls: Mapping[str, list[CodeRef]]) -> list[dict[str, object]]:
@@ -338,7 +355,7 @@ def _evaluate(path: Path) -> tuple[dict[str, object], dict[str, str]]:
     kind = str(raw.get("kind", "test"))
     pytest_form = declaration_form(tree) == "pytest"
     steps: list[tuple[str, Callable[[], object]]] = [
-        ("keys", lambda: _check_keys(path, raw)),
+        ("keys", lambda: _check_keys(path, raw, pytest_form)),
         ("purpose", lambda: _parse_purpose(path, raw)),
         ("id", lambda: _check_id(path, raw)),
         ("kind", lambda: _check_kind(path, kind)),
@@ -397,7 +414,7 @@ def load_vector_file(path: Path) -> VectorSet:
     if not isinstance(payload, dict) or payload.get("schema") != VECTOR_SCHEMA:
         raise DeclarationError(f"{path.name}: vector file schema must be {VECTOR_SCHEMA!r}")
     provenance = payload.get("provenance")
-    _check_provenance(path, provenance)
+    check_provenance(path, provenance)
     raw_cases = payload.get("cases")
     if not isinstance(raw_cases, list) or not raw_cases:
         raise DeclarationError(f"{path.name}: a vector file needs a non-empty cases list")
@@ -482,10 +499,16 @@ def _parse_purpose(path: Path, raw: Mapping[str, object]) -> tuple[str, str]:
     return str(purpose["checks"]).strip(), str(purpose["because"]).strip()
 
 
-def _check_keys(path: Path, raw: Mapping[str, object]) -> None:
+def _check_keys(path: Path, raw: Mapping[str, object], pytest_form: bool) -> None:
     unknown = sorted(set(raw) - _KNOWN_KEYS)
     if unknown:
         raise DeclarationError(f"{path.name}: unknown RACK keys {unknown}")
+    adapter_only = sorted(set(raw) & set(ADAPTER_ONLY_KEYS)) if pytest_form else []
+    if adapter_only:
+        raise DeclarationError(
+            f"{path.name}: {adapter_only} belong only to run(case, impl) tests; "
+            "a pytest test reads its own reference files"
+        )
 
 
 def _check_id(path: Path, raw: Mapping[str, object]) -> str:
@@ -498,11 +521,21 @@ def _check_id(path: Path, raw: Mapping[str, object]) -> str:
 
 
 def declaration_form(tree: ast.Module) -> str:
-    """``pytest`` when the file has no ``run`` function, else ``adapter``."""
+    """``adapter`` for a file with a top-level ``run`` and no ``test_*``, else ``pytest``."""
     names = {
         node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
-    return "adapter" if "run" in names else "pytest"
+    has_test = any(name.startswith("test_") for name in names)
+    return "adapter" if "run" in names and not has_test else "pytest"
+
+
+def source_form(path: Path) -> str:
+    """The form of a test file from its functions, even when its header is invalid."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return "pytest"
+    return declaration_form(tree)
 
 
 def _check_entry_point(path: Path, tree: ast.Module, raw: Mapping[str, object]) -> str:
@@ -529,27 +562,71 @@ def _check_pytest_entry_point(path: Path, tree: ast.Module) -> None:
 
 
 def _check_implementations_table(path: Path, tree: ast.Module, raw: Mapping[str, object]) -> None:
-    """When the file itself runs several implementations, it maps each to its function.
+    """Every implemented implementation has a row, and each row runs one implementation.
 
-    Implementations with their own native ``test`` and not-applicable ones are
-    left out; every other one, suspended and planned included, has an entry so
-    Rack can run it when it is selected. A file that runs one implementation
-    needs no table.
+    Without a table the file's test runs the first implementation listed
+    without a native ``test``; any later implemented one needs a native test or
+    a table. A top-level ``IMPLEMENTATIONS`` dict maps every implementation
+    without a native test (not-applicable ones left out) to its function, in
+    header order, and the test indexes it only with its ``implementation``
+    parameter, so no row compares one implementation with another.
     """
     keys = _implementations_table_keys(tree)
-    declared = _runnable_names(raw.get("implementations"))
-    if keys is None and len(declared) <= 1:
-        return
+    in_file = _in_file_entries(raw.get("implementations"))
     if keys is None:
-        raise DeclarationError(
-            f"{path.name}: map each implementation to its function in a top-level "
-            "IMPLEMENTATIONS = {...} dict"
-        )
-    if keys != declared:
+        extra = [name for name, status in in_file[1:] if status == "implemented"]
+        if extra or _takes_implementation(tree):
+            raise DeclarationError(
+                f"{path.name}: implemented {extra} need a native test, or a top-level "
+                "IMPLEMENTATIONS = {...} dict mapping each implementation to its function"
+            )
+        return
+    names = [name for name, _ in in_file]
+    if keys != names:
         raise DeclarationError(
             f"{path.name}: IMPLEMENTATIONS {keys} must list the RACK implementations "
-            f"{declared} in the same order"
+            f"{names} in the same order"
         )
+    _check_table_use(path, tree)
+
+
+def _takes_implementation(tree: ast.Module) -> bool:
+    """Whether the file's test_* function takes an ``implementation`` parameter."""
+    return any(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
+        and "implementation" in [argument.arg for argument in node.args.args]
+        for node in tree.body
+    )
+
+
+def _check_table_use(path: Path, tree: ast.Module) -> None:
+    if not _takes_implementation(tree):
+        raise DeclarationError(f"{path.name}: a test with IMPLEMENTATIONS takes implementation")
+    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Name)
+            and node.id == "IMPLEMENTATIONS"
+            and isinstance(node.ctx, ast.Load)
+            and not _one_implementation_use(node, parents.get(node))
+        ):
+            raise DeclarationError(
+                f"{path.name}: line {node.lineno} uses IMPLEMENTATIONS other than as "
+                "IMPLEMENTATIONS[implementation] or in parametrize"
+            )
+
+
+def _one_implementation_use(node: ast.Name, parent: ast.AST | None) -> bool:
+    if isinstance(parent, ast.Subscript):
+        index = parent.slice
+        return isinstance(index, ast.Name) and index.id == "implementation"
+    return (
+        isinstance(parent, ast.Call)
+        and node in parent.args
+        and isinstance(parent.func, ast.Attribute)
+        and parent.func.attr == "parametrize"
+    )
 
 
 def _implementations_table_keys(tree: ast.Module) -> list[object] | None:
@@ -564,11 +641,12 @@ def _implementations_table_keys(tree: ast.Module) -> list[object] | None:
     return None
 
 
-def _runnable_names(implementations: object) -> list[str]:
+def _in_file_entries(implementations: object) -> list[tuple[str, str]]:
+    """(name, status) of each applicable implementation without a native test."""
     if not isinstance(implementations, dict):
         return []
     return [
-        str(name)
+        (str(name), str(entry.get("status")))
         for name, entry in implementations.items()
         if isinstance(entry, dict)
         and entry.get("status") != "not_applicable"
@@ -668,8 +746,11 @@ def _test_path(path: Path, name: str, entry: Mapping[str, object]) -> str:
 
 
 def _check_operations(path: Path, raw: Mapping[str, object], kind: str, pytest_form: bool) -> None:
+    # A pytest test with operations fails the keys rule instead.
+    if pytest_form:
+        return
     value = raw.get("operations")
-    if kind == "check" or pytest_form:
+    if kind == "check":
         if value is not None:
             raise DeclarationError(f"{path.name}: operations belong only to run(case, impl) tests")
         return
@@ -689,8 +770,8 @@ def _text(value: object) -> str:
 
 
 def _check_expect(path: Path, raw: Mapping[str, object], pytest_form: bool) -> None:
-    # A pytest-form test does its own comparison; Rack only reads its header.
-    if raw.get("kind", "test") == "check" or (pytest_form and "expect" not in raw):
+    # A pytest test does its own comparison; an expect key fails the keys rule.
+    if raw.get("kind", "test") == "check" or pytest_form:
         return
     expect = raw.get("expect")
     if not isinstance(expect, dict) or expect.get("source") not in EXPECT_SOURCES:
@@ -721,7 +802,7 @@ def _check_resources(path: Path, raw: Mapping[str, object]) -> None:
 
 
 def _check_cases_ref(path: Path, raw: Mapping[str, object], pytest_form: bool) -> None:
-    if pytest_form and "cases" not in raw:
+    if pytest_form:
         return
     cases = raw.get("cases")
     if (
@@ -783,7 +864,8 @@ def _parse_difference(path: Path, item: object) -> Difference:
     )
 
 
-def _check_provenance(path: Path, provenance: object) -> None:
+def check_provenance(path: Path, provenance: object) -> None:
+    """A reference file says where its values came from: a kind and a source."""
     if (
         not isinstance(provenance, dict)
         or provenance.get("kind") not in PROVENANCE_KINDS

@@ -21,6 +21,7 @@ from rack.declarations import (
     DeclarationError,
     TestDeclaration,
     declared_test_files,
+    listed_code,
     load_declaration,
     load_vector_file,
 )
@@ -35,6 +36,7 @@ DECLARATION_AUDIT_CODES = frozenset(
         "duplicate_test_id",
         "invalid_cases",
         "invalid_declaration",
+        "invalid_resource",
         "test_module_import",
         "untraced",
         "native_test",
@@ -57,7 +59,10 @@ class TestEntry:
     notes: Mapping[str, str] = field(default_factory=dict)  # issue or reason per implementation
     code: Mapping[str, tuple[dict[str, str], ...]] = field(default_factory=dict)
     deferred: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
+    # Cases of the implementations this file's test runs; a native test is one case.
     case_count: int | None = None
+    # Implementations tested by a native test, with that test's file name.
+    native: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -149,15 +154,24 @@ def _declared_entry(stratum: str, path: Path, default_concerns: tuple[str, ...])
             for entry in declaration.implementations
             if entry.status != "implemented"
         },
-        code={
-            name: tuple(
-                {"file": ref.file, "module": ref.module, "function": ref.function} for ref in refs
-            )
-            for name, refs in declared_calls(declaration).items()
-        },
+        code=_code_cells(declaration),
         deferred=declaration.deferred_issues,
         case_count=_case_count(declaration),
+        native={
+            entry.name: Path(entry.test).name for entry in declaration.implementations if entry.test
+        },
     )
+
+
+def _code_cells(declaration: TestDeclaration) -> dict[str, tuple[dict[str, str], ...]]:
+    """The code each implementation exercises: the header's list, else the registry trace."""
+    calls = listed_code(declaration) or declared_calls(declaration)
+    return {
+        name: tuple(
+            {"file": ref.file, "module": ref.module, "function": ref.function} for ref in refs
+        )
+        for name, refs in calls.items()
+    }
 
 
 def _case_count(declaration: TestDeclaration) -> int | None:
@@ -214,13 +228,20 @@ def _rows_from_result(path: Path) -> list[Row]:
 def _with_observed_case_counts(
     entries: Sequence[TestEntry], by_test: Mapping[str, Sequence[Row]]
 ) -> list[TestEntry]:
-    """Count a catalog's cases from its latest rows; every row is recorded, skipped too."""
-    return [
-        replace(entry, case_count=len({row.case for row in by_test[entry.id]}))
-        if entry.case_count is None and by_test.get(entry.id)
-        else entry
-        for entry in entries
-    ]
+    """Count cases from the latest rows when no vector file gives the count.
+
+    Every row is recorded, skipped ones too; native test rows are left out
+    because each native test counts as one case of its own implementation.
+    """
+    counted: list[TestEntry] = []
+    for entry in entries:
+        cases = {
+            row.case for row in by_test.get(entry.id, ()) if row.implementation not in entry.native
+        }
+        if entry.case_count is None and cases:
+            entry = replace(entry, case_count=len(cases))
+        counted.append(entry)
+    return counted
 
 
 def _implementation_order(entries: Iterable[TestEntry]) -> list[str]:
@@ -296,15 +317,18 @@ def _case_counts(
         if row.implementation == implementation
     )
     cases: dict[str, object] = {outcome: outcomes[outcome] for outcome in ROW_OUTCOMES}
-    counts = [entry.case_count for entry in implemented]
-    # A catalog that has not run yet has no known case count.
-    if None in counts:
-        cases.update(total=None, not_run=None)
-        return cases
-    total = sum(count for count in counts if count is not None)
+    total = _case_total(implementation, implemented)
     ran = sum(outcomes[outcome] for outcome in ROW_OUTCOMES)
-    cases.update(total=total, not_run=max(total - ran, 0))
+    cases.update(total=total, not_run=None if total is None else max(total - ran, 0))
     return cases
+
+
+def _case_total(implementation: str, implemented: Sequence[TestEntry]) -> int | None:
+    """Cases the implementation owes; a native test is one case, an unrun catalog unknown."""
+    counts = [1 if implementation in entry.native else entry.case_count for entry in implemented]
+    if None in counts:
+        return None
+    return sum(count for count in counts if count is not None)
 
 
 def _test_detail(

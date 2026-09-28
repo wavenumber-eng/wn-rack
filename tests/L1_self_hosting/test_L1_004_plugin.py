@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -17,9 +18,24 @@ VECTORS_L0_001 = Path("L0_units") / "vectors" / "L0_001_parse_duration.json"
 Rows = dict[str, tuple[str, str, str]]
 
 
+@pytest.fixture(scope="module", autouse=True)
+def shared_cargo_target(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
+    """One cargo target directory per module, so the fixture crate's dependencies build once."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("CARGO_TARGET_DIR", str(tmp_path_factory.mktemp("cargo_target")))
+        yield
+
+
 def copy_suite(tmp_path: Path) -> Path:
     suite = tmp_path / "declared_suite"
-    shutil.copytree(SOURCE_SUITE, suite, ignore=shutil.ignore_patterns("__pycache__"))
+    # Fresh modification times: copies share one cargo target directory, and cargo
+    # judges a local crate fresh by comparing source times with its last build.
+    shutil.copytree(
+        SOURCE_SUITE,
+        suite,
+        ignore=shutil.ignore_patterns("__pycache__"),
+        copy_function=shutil.copy,
+    )
     return suite
 
 
@@ -71,6 +87,15 @@ def read_rows(report: Path) -> Rows:
             properties.get("rack_detail", ""),
         )
     return rows
+
+
+def row_properties(suite: Path, name: str) -> dict[str, object]:
+    """The Rack user properties the last run recorded for one row."""
+    payload = json.loads((suite / "report.json").read_text(encoding="utf-8"))
+    for test in payload["tests"]:
+        if test["nodeid"].split("::")[-1] == name:
+            return {key: value for item in test["user_properties"] for key, value in item.items()}
+    raise KeyError(name)
 
 
 def outcomes(rows: Rows) -> dict[str, tuple[str, str]]:
@@ -419,16 +444,18 @@ def test_native_rust_test_is_one_cargo_row(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
     assert rows["test_plain_parse[hours_and_minutes]"][:2] == ("passed", "pass")
     assert rows["L0_007[rust]"][:2] == ("passed", "pass")
+    # A native row is recorded under its test file, one case for the whole test.
+    assert row_properties(suite, "L0_007[rust]")["rack_case"] == "test_l0_007_plain_parse.rs"
 
     rust_test = suite / "rust_durations" / "tests" / "test_l0_007_plain_parse.rs"
-    replace_in(rust_test, '"1h30m"), 5400', '"1h30m"), 5401')
+    replace_in(rust_test, "parse_duration(input)", "parse_duration(input) + 1")
     failed, rows = run_suite(suite)
     assert rows["L0_007[rust]"][:2] == ("failed", "fail")
     assert (
         "cargo test --no-fail-fast -p rust-durations --test test_l0_007_plain_parse"
         in failed.stdout
     )
-    assert "left: 5400" in failed.stdout
+    assert "hours_and_minutes: expected 5400, got 5401" in failed.stdout
 
     replace_in(
         plain,
@@ -440,20 +467,38 @@ def test_native_rust_test_is_one_cargo_row(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(shutil.which("cargo") is None, reason="needs a Rust toolchain")
+def test_native_row_passes_only_when_its_named_test_function_passes(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    (suite / "L0_units" / "test_L0_007_plain_parse.py").write_text(
+        NATIVE_FORM_TEST, encoding="utf-8"
+    )
+    rust_test = suite / "rust_durations" / "tests" / "test_l0_007_plain_parse.rs"
+    replace_in(rust_test, "fn l0_007_plain_parse()", "fn some_other_name()")
+
+    result, rows = run_suite(suite)
+
+    # Cargo reports "test result: ok." but not the test the convention names.
+    assert rows["L0_007[rust]"][:2] == ("failed", "fail")
+    assert "cargo did not report a passing test named l0_007_plain_parse" in result.stdout
+
+
+SECOND_NATIVE_TEST = (
+    NATIVE_FORM_TEST.replace('"id": "L0_007"', '"id": "L0_008"')
+    .replace("test_l0_007_plain_parse.rs", "test_l0_008_plain_round_trip.rs")
+    .replace("def test_plain_parse", "def test_plain_round_trip")
+)
+
+
+@pytest.mark.skipif(shutil.which("cargo") is None, reason="needs a Rust toolchain")
 def test_rust_tests_of_one_crate_run_in_one_cargo_call(tmp_path: Path) -> None:
     suite = copy_suite(tmp_path)
     units = suite / "L0_units"
     (units / "test_L0_007_plain_parse.py").write_text(NATIVE_FORM_TEST, encoding="utf-8")
-    second = (
-        NATIVE_FORM_TEST.replace('"id": "L0_007"', '"id": "L0_008"')
-        .replace("test_l0_007_plain_parse.rs", "test_l0_008_plain_round_trip.rs")
-        .replace("def test_plain_parse", "def test_plain_round_trip")
-    )
-    (units / "test_L0_008_plain_round_trip.py").write_text(second, encoding="utf-8")
+    (units / "test_L0_008_plain_round_trip.py").write_text(SECOND_NATIVE_TEST, encoding="utf-8")
     replace_in(
         suite / "rust_durations" / "tests" / "test_l0_008_plain_round_trip.rs",
-        '"90m"), 5400',
-        '"90m"), 5401',
+        'format!("{seconds}s")',
+        'format!("{seconds}m")',
     )
 
     result, rows = run_suite(suite)
@@ -467,4 +512,79 @@ def test_rust_tests_of_one_crate_run_in_one_cargo_call(tmp_path: Path) -> None:
     assert batch in result.stdout
     # The failing row's message is its own binary's section, not the other's.
     failure = result.stdout[result.stdout.index("L0_008[rust]") :]
-    assert "left: 5400" in failure and "right: 5401" in failure
+    assert "hours_and_minutes: expected 5400, got 324000" in failure
+    assert "test l0_007_plain_parse" not in failure
+
+
+@pytest.mark.skipif(shutil.which("cargo") is None, reason="needs a Rust toolchain")
+def test_a_broken_or_missing_rust_test_fails_only_its_own_row(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    units = suite / "L0_units"
+    (units / "test_L0_007_plain_parse.py").write_text(NATIVE_FORM_TEST, encoding="utf-8")
+    (units / "test_L0_008_plain_round_trip.py").write_text(SECOND_NATIVE_TEST, encoding="utf-8")
+    second = suite / "rust_durations" / "tests" / "test_l0_008_plain_round_trip.rs"
+    replace_in(second, "let mut failures", 'let broken: u8 = "not a number";\n    let mut failures')
+
+    _, rows = run_suite(suite)
+
+    # The batch fails to build, so each binary reruns alone.
+    assert rows["L0_007[rust]"][:2] == ("passed", "pass")
+    assert rows["L0_008[rust]"][:2] == ("failed", "fail")
+
+    second.unlink()
+    result, rows = run_suite(suite)
+
+    assert rows["L0_007[rust]"][:2] == ("passed", "pass")
+    assert rows["L0_008[rust]"][:2] == ("failed", "fail")
+    assert "test_l0_008_plain_round_trip.rs does not exist" in result.stdout
+
+
+def test_every_row_of_a_plain_test_with_an_invalid_header_errors(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    plain = suite / "L0_units" / "test_L0_007_plain_parse.py"
+    plain.write_text(
+        NATIVE_FORM_TEST.replace(
+            '"checks": "Parsing duration strings returns the whole seconds they spell."',
+            '"checks": "parses"',
+        ),
+        encoding="utf-8",
+    )
+
+    result, rows = run_suite(suite)
+
+    assert rows["test_plain_parse[hours_and_minutes]"][0] == "error"
+    assert "invalid RACK header" in result.stdout
+    assert result.returncode == 1
+
+
+CHECK_FORM_TEST = """import json
+from pathlib import Path
+
+RACK = {
+    "id": "L0_009",
+    "title": "Vector files state their provenance",
+    "kind": "check",
+    "purpose": {
+        "checks": "Every vector file in this stratum names where its values came from.",
+        "because": "A value without a source cannot be told apart from a copied output.",
+    },
+}
+
+
+def test_vector_provenance():
+    for path in sorted((Path(__file__).parent / "vectors").glob("*.json")):
+        assert json.loads(path.read_text(encoding="utf-8"))["provenance"]["source"]
+"""
+
+
+def test_a_plain_check_records_a_check_row(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    (suite / "L0_units" / "test_L0_009_vector_check.py").write_text(
+        CHECK_FORM_TEST, encoding="utf-8"
+    )
+
+    result, rows = run_suite(suite)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert rows["test_vector_provenance"][:2] == ("passed", "pass")
+    assert row_properties(suite, "test_vector_provenance")["rack_implementation"] == "check"

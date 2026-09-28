@@ -33,10 +33,10 @@ from rack.declarations import (
     Difference,
     ImplementationStatus,
     TestDeclaration,
-    declaration_form,
     is_self_declared,
     load_vector_file,
     read_declaration,
+    source_form,
     validate_deferrals,
 )
 from rack.outcomes import (
@@ -123,7 +123,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         if blocked is not None or isinstance(declaration, str):
             item.stash[status_rows.BLOCKED_KEY] = blocked or ""
             continue
-        status = declaration.status_of(name)
+        status = status_rows.row_status(declaration, name)
         assert status is not None
         item.stash[status_rows.ROW_KEY] = status
         item.add_marker(pytest.mark.rack_implementation(name))
@@ -521,10 +521,7 @@ def _check_lanes(suite: Suite, declaration: TestDeclaration, cases: tuple[Case, 
 
 
 def _adapter_form(path: Path) -> bool:
-    import ast
-
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    return declaration_form(tree) == "adapter"
+    return source_form(path) == "adapter"
 
 
 def _check_code(suite: Suite, declaration: TestDeclaration) -> None:

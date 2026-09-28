@@ -438,8 +438,16 @@ def test_pytest_form_is_an_ordinary_test_with_a_header(tmp_path: Path) -> None:
         (
             '"resources": [',
             '"operations": ["Parse"],\n    "resources": [',
-            "operations belong only to run",
+            "belong only to run",
         ),
+        ('"resources": [', '"expect": {"source": "contract"},\n    "resources": [', "expect"),
+        ('"resources": [', '"deferred": {},\n    "resources": [', "deferred"),
+        (
+            'assert IMPLEMENTATIONS[implementation]("0s") == 0',
+            'assert IMPLEMENTATIONS[implementation]("0s") == IMPLEMENTATIONS["python"]("0s")',
+            "uses IMPLEMENTATIONS other than",
+        ),
+        ("def test_parse_duration(implementation)", "def test_parse_duration(name)", "takes"),
         (
             '"resources": ["vectors/L1_012_parse_duration.json"]',
             '"resources": "vectors"',
@@ -452,3 +460,42 @@ def test_pytest_form_is_an_ordinary_test_with_a_header(tmp_path: Path) -> None:
 def test_pytest_form_rules_fail_closed(tmp_path: Path, old: str, new: str, message: str) -> None:
     with pytest.raises(DeclarationError, match=message):
         read_declaration(write_test(tmp_path, PYTEST_FORM.replace(old, new, 1)))
+
+
+PLAIN_FORM = """RACK = {
+    "id": "L1_012",
+    "title": "Duration parsing",
+    "purpose": {
+        "checks": "Duration strings parse to whole seconds.",
+        "because": "Schedules built on a wrong parse miss every deadline.",
+    },
+    "implementations": {
+        "python": {"status": "implemented"},
+        "cpp": {"status": "suspended", "reason": "C++ port paused by policy"},
+    },
+}
+
+
+def run(text):
+    return 0
+
+
+def test_parse_duration():
+    assert run("0s") == 0
+"""
+
+
+def test_plain_test_runs_the_first_implementation_without_a_native_test(tmp_path: Path) -> None:
+    declaration = read_declaration(write_test(tmp_path, PLAIN_FORM))
+
+    # A helper named run does not turn a test_* file into a run(case, impl) file.
+    assert declaration.form == "pytest"
+    assert declaration.own is not None and declaration.own.name == "python"
+
+    # A second implemented implementation needs its own row.
+    implemented = PLAIN_FORM.replace(
+        '{"status": "suspended", "reason": "C++ port paused by policy"}',
+        '{"status": "implemented"}',
+    )
+    with pytest.raises(DeclarationError, match=r"implemented \['cpp'\] need a native test"):
+        read_declaration(write_test(tmp_path, implemented))

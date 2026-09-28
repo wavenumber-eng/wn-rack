@@ -1,11 +1,13 @@
 """Run or skip the rows of a plain pytest test by the statuses in its RACK header.
 
-A pytest-form test parametrizes over ``implementation``. For each row Rack
-looks the implementation up in the header: implemented rows run; planned and
-suspended rows are skipped with their reason unless ``--rack-impl`` selects
-them, and a selected one that fails is reported without failing the run;
-not-applicable rows are skipped. A row for an implementation the header does
-not declare fails. Rack never changes what the test body does.
+A row's implementation is its ``implementation`` parameter, a native test's own
+entry, or else the implementation the file's test runs (``TestDeclaration.own``);
+a check's rows are ``check`` rows. Implemented rows run; planned and suspended
+rows are skipped with their reason unless ``--rack-impl`` selects them, and a
+selected one that fails is reported without failing the run; not-applicable
+rows are skipped. Every row of a file whose header is invalid errors, and so
+does a row for an implementation the header does not declare. Rack never
+changes what the test body does.
 """
 
 from __future__ import annotations
@@ -21,40 +23,48 @@ from rack.declarations import (
     TestDeclaration,
     is_self_declared,
     load_declaration,
+    source_form,
 )
 
 ROW_KEY = pytest.StashKey[ImplementationStatus]()
 # Why a row cannot run: its header is invalid or does not declare it.
 BLOCKED_KEY = pytest.StashKey[str]()
 NON_GATING = ("planned", "suspended")
+CHECK = "check"
 
 
 def declared_row(item: pytest.Item) -> tuple[TestDeclaration | str, str] | None:
-    """The header (or why it is invalid) and implementation name of a pytest-form row.
-
-    A row's implementation is its ``implementation`` parameter, a native test's
-    own entry, or, for a file that runs one implementation, that one.
-    """
+    """The header (or why it is invalid) and implementation name of a pytest-form row."""
     native = getattr(item, "rack_native_row", None)
     if native is not None:
         return native
     declaration = _pytest_declaration(Path(str(item.path)))
     if declaration is None:
         return None
+    if isinstance(declaration, str):
+        return declaration, ""
     callspec = getattr(item, "callspec", None)
     implementation = callspec.params.get("implementation") if callspec else None
     if isinstance(implementation, str):
         return declaration, implementation
-    if isinstance(declaration, TestDeclaration) and len(declaration.in_file) == 1:
-        return declaration, declaration.in_file[0].name
-    return None
+    if declaration.kind == CHECK:
+        return declaration, CHECK
+    own = declaration.own
+    return (declaration, own.name) if own is not None else None
+
+
+def row_status(declaration: TestDeclaration, name: str) -> ImplementationStatus | None:
+    """The header status of a row; a check's rows always run."""
+    if declaration.kind == CHECK:
+        return ImplementationStatus(CHECK, "implemented")
+    return declaration.status_of(name)
 
 
 def block_reason(declaration: TestDeclaration | str, name: str) -> str | None:
     """Why the row must fail before running, or None."""
     if isinstance(declaration, str):
         return f"invalid RACK header, so statuses cannot be applied: {declaration}"
-    if declaration.status_of(name) is None:
+    if row_status(declaration, name) is None:
         return f"implementation {name!r} is not declared in RACK implementations"
     return None
 
@@ -77,18 +87,33 @@ def record(
     outcome: str,
     detail: str = "",
 ) -> None:
-    callspec = getattr(item, "callspec", None)
-    case = callspec.params.get("case") if callspec else None
-    case_id = case.get("id", "") if isinstance(case, dict) else ""
     item.user_properties[:] = [
         ("rack_test", declaration.id),
-        ("rack_case", str(case_id)),
+        ("rack_case", case_name(item)),
         ("rack_implementation", status.name),
         ("rack_status", status.status),
         ("rack_outcome", outcome),
         ("rack_detail", detail),
         ("rack_differences", []),
     ]
+
+
+def case_name(item: pytest.Item) -> str:
+    """The row's case: a ``case`` parameter's id, a native test's file, or the pytest id.
+
+    Tests that parametrize over vector cases name the parameter ``case``, so
+    each row is recorded under the vector file's case id.
+    """
+    native_case = getattr(item, "rack_case", None)
+    if isinstance(native_case, str):
+        return native_case
+    callspec = getattr(item, "callspec", None)
+    if callspec is None:
+        return ""
+    case = callspec.params.get("case")
+    if isinstance(case, dict) and isinstance(case.get("id"), str):
+        return str(case["id"])
+    return str(callspec.id)
 
 
 def settle(report: pytest.TestReport, status: ImplementationStatus) -> tuple[str, str] | None:
@@ -135,5 +160,6 @@ def _cached(path: str, _mtime_ns: int, _size: int) -> TestDeclaration | str | No
     try:
         declaration = load_declaration(Path(path))
     except DeclarationError as error:
-        return str(error)
+        # An invalid run(case, impl) file is reported by Rack's own collector.
+        return str(error) if source_form(Path(path)) == "pytest" else None
     return declaration if declaration.form == "pytest" else None

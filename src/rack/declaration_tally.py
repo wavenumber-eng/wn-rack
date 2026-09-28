@@ -26,6 +26,7 @@ IGNORED_DIR_NAMES = frozenset({"__pycache__", "rack_results", ".pytest_cache"})
 # Audit failure codes that correspond to suite-level requirements.
 SUITE_REQUIREMENTS = {
     "invalid_cases": "vectors",
+    "invalid_resource": "resource_files",
     "untraced": "trace",
     "native_test": "native_tests",
     "duplicate_test_id": "unique_id",

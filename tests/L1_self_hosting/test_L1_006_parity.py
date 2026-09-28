@@ -176,3 +176,42 @@ def test_parity_command(tmp_path: Path) -> None:
     assert "RACK PARITY by concern" in as_text.stdout
 
     assert rack("L7_missing").returncode == 1
+
+
+def test_parity_reads_header_code_and_counts_a_native_test_as_one_case(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    source = (ROOT / "tests" / "L1_self_hosting" / "test_L1_004_plugin.py").read_text("utf-8")
+    start = source.index('NATIVE_FORM_TEST = """') + len('NATIVE_FORM_TEST = """')
+    text = source[start : source.index('"""', start)].replace(
+        '"python": {"status": "implemented"},',
+        '"python": {"status": "implemented", "code": [{"file": "suite_support/durations.py", '
+        '"module": "suite_support.durations", "function": "parse_duration"}]},',
+    )
+    (suite / UNITS / "test_L0_007_plain_parse.py").write_text(text, encoding="utf-8")
+    write_rows(
+        suite,
+        "test_L0_007_plain_parse",
+        [
+            ("L0_007", "hours_and_minutes", "python", "pass"),
+            ("L0_007", "fractional_hours", "python", "pass"),
+            ("L0_007", "long_form", "python", "pass"),
+            ("L0_007", "test_l0_007_plain_parse.rs", "rust", "pass"),
+        ],
+    )
+
+    report = build_parity(suite, suite / "rack_results", ["L0_units"])
+
+    tests = at(report, "tests")
+    assert isinstance(tests, list)
+    detail = next(test for test in tests if at(test, "id") == "L0_007")
+    assert at(detail, "case_count") == 3
+    assert at(detail, "cells", "python", "code") == [
+        {
+            "file": "suite_support/durations.py",
+            "module": "suite_support.durations",
+            "function": "parse_duration",
+        }
+    ]
+    assert at(detail, "cells", "rust", "cases") == {"test_l0_007_plain_parse.rs": "pass"}
+    rust = at(report, "totals", "implementations", "rust", "cases")
+    assert isinstance(rust, dict) and rust["pass"] == 1
