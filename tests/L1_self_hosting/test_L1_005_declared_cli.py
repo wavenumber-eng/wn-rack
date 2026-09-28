@@ -237,9 +237,10 @@ def test_audit_holds_native_tests_to_the_naming_convention(tmp_path: Path) -> No
     replace_in(renamed, "L0_001_parse_duration.json", "another_file.json")
     report = audit_suite(suite, signoff_strata=("L0_units",))
     assert any("does not read L0_001_parse_duration.json" in f.message for f in report.failures)
-    replace_in(plain, '"status": "implemented",
-            "test"', '"status": "suspended",
-            "reason": "port paused",
-            "test"')
+    replace_in(
+        plain,
+        '"status": "implemented",\n            "test"',
+        '"status": "suspended",\n            "reason": "port paused",\n            "test"',
+    )
     report = audit_suite(suite, signoff_strata=("L0_units",))
     assert not any("does not read" in f.message for f in report.failures)
