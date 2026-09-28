@@ -183,6 +183,11 @@ When one file exercises several implementations itself, it maps each to its
 function in a top-level `IMPLEMENTATIONS` dict (same names, same order as the
 header) and parametrizes over `implementation`.
 
+An implementation entry may list the functions its test exercises as
+`"code": [{"file": ..., "module": ..., "function": ...}]`; `rack audit`
+verifies each entry by reading the named file, for implemented and suspended
+implementations, and reports derive `code_under_test` from the Python ones.
+
 `rack audit` checks that each native test exists, reads the test's vector
 files, and follows one naming convention derived from the id and the Python
 file's slug: `test_L0_004_parse_byte_record.py`,

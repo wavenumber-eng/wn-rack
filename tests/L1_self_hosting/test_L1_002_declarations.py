@@ -119,10 +119,15 @@ def test_valid_declaration_reads_statuses_and_deferrals(tmp_path: Path) -> None:
         ('"reason": "no WASM target"', '"reason": " "', "needs a reason"),
         (
             '"python": {"status": "implemented"}',
-            '"python": {"status": "implemented", "code": []}',
+            '"python": {"status": "implemented", "cod": []}',
             "unknown keys",
         ),
         ('"operations": ["ParseDuration"],', "", "operations must list"),
+        (
+            '"python": {"status": "implemented"}',
+            '"python": {"status": "implemented", "code": [{"file": "a.py"}]}',
+            "code entries need exactly file, module, and function",
+        ),
         (
             '"operations": ["ParseDuration"],',
             '"operations": ["ParseDuration", "ParseDuration"],',

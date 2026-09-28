@@ -97,6 +97,8 @@ class ImplementationStatus:
     # A native test in the implementation's own language, relative to the
     # project root; empty when this file's own test exercises it.
     test: str = ""
+    # The functions this implementation's test exercises, verified statically.
+    code: tuple[CodeRef, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -231,7 +233,9 @@ def manifest_entry(declaration: TestDeclaration) -> dict[str, object]:
 
     raw = declaration.raw
     cases = declaration.cases
-    calls = declared_calls(declaration)
+    # Code listed in the header wins; otherwise the adapter form's registry trace.
+    calls = {entry.name: list(entry.code) for entry in declaration.implementations if entry.code}
+    calls = calls or declared_calls(declaration)
     return {
         "id": declaration.id,
         "name": declaration.title or declaration.path.name,
@@ -618,7 +622,8 @@ def _parse_implementations(
     return tuple(_parse_status(path, str(name), entry) for name, entry in value.items())
 
 
-_STATUS_KEYS = frozenset({"status", "reason", "issue", "test"})
+_STATUS_KEYS = frozenset({"status", "reason", "issue", "test", "code"})
+_CODE_KEYS = frozenset({"file", "module", "function"})
 
 
 def _parse_status(path: Path, name: str, entry: object) -> ImplementationStatus:
@@ -635,7 +640,24 @@ def _parse_status(path: Path, name: str, entry: object) -> ImplementationStatus:
         raise DeclarationError(f"{path.name}: {status} {name} needs a reason")
     if status == "planned" and not issue:
         raise DeclarationError(f"{path.name}: planned {name} needs an issue")
-    return ImplementationStatus(name, status, reason, issue, test)
+    code = _parse_code(path, name, entry.get("code", []))
+    return ImplementationStatus(name, status, reason, issue, test, code)
+
+
+def _parse_code(path: Path, name: str, value: object) -> tuple[CodeRef, ...]:
+    if not isinstance(value, list) or not all(_is_code_entry(item) for item in value):
+        raise DeclarationError(
+            f"{path.name}: {name} code entries need exactly file, module, and function"
+        )
+    return tuple(CodeRef(item["file"], item["module"], item["function"]) for item in value)
+
+
+def _is_code_entry(item: object) -> bool:
+    return (
+        isinstance(item, dict)
+        and set(item) == _CODE_KEYS
+        and all(isinstance(item[key], str) and item[key].strip() for key in _CODE_KEYS)
+    )
 
 
 def _test_path(path: Path, name: str, entry: Mapping[str, object]) -> str:

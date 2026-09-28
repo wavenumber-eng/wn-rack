@@ -244,3 +244,21 @@ def test_audit_holds_native_tests_to_the_naming_convention(tmp_path: Path) -> No
     )
     report = audit_suite(suite, signoff_strata=("L0_units",))
     assert not any("does not read" in f.message for f in report.failures)
+
+
+def test_audit_resolves_code_listed_in_the_header(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    source = (ROOT / "tests" / "L1_self_hosting" / "test_L1_004_plugin.py").read_text("utf-8")
+    start = source.index('NATIVE_FORM_TEST = """') + len('NATIVE_FORM_TEST = """')
+    text = source[start : source.index('"""', start)].replace(
+        '"python": {"status": "implemented"},',
+        '"python": {"status": "implemented", "code": [{"file": "suite_support/durations.py", '
+        '"module": "suite_support.durations", "function": "parse_duration"}]},',
+    )
+    plain = suite / UNITS / "test_L0_007_plain_parse.py"
+    plain.write_text(text, encoding="utf-8")
+
+    assert audit_codes(suite) == []
+
+    replace_in(plain, '"function": "parse_duration"', '"function": "parse_hours"')
+    assert audit_codes(suite) == ["untraced"]

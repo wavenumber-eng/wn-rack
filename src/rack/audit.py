@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from rack.code_refs import project_root
+from rack.code_refs import check_code_ref, project_root
 from rack.declaration_tally import DeclarationTally, require_declared, tally_declarations
 from rack.declarations import (
     DeclarationError,
@@ -536,7 +536,7 @@ def _validate_declared_code(
     declaration: TestDeclaration,
     failures: list[AuditFailure],
 ) -> None:
-    for problem in trace_problems(declaration):
+    for problem in [*trace_problems(declaration), *listed_code_problems(project, declaration)]:
         failures.append(
             _failure(
                 "untraced",
@@ -566,6 +566,17 @@ def _validate_native_tests(
                 subtest=declaration.path.name,
             )
         )
+
+
+def listed_code_problems(project: Path, declaration: TestDeclaration) -> list[str]:
+    """Header code entries of implemented and suspended implementations must resolve."""
+    return [
+        f"{entry.name}: {problem}"
+        for entry in declaration.implementations
+        if entry.status in ("implemented", "suspended")
+        for ref in entry.code
+        if (problem := check_code_ref(project, ref)) is not None
+    ]
 
 
 def _native_test_problems(project: Path, declaration: TestDeclaration) -> list[str]:
