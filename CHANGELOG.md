@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A header entry may name a native test (`"test": "<path>.rs"`); Rack runs it
+  as one `cargo test` row from its package directory, by status, and records
+  pass or fail with cargo's output. `rack audit` checks the file exists, reads
+  the test's vector files, and follows the naming convention
+  (`test_l0_004_<slug>.rs` with `fn l0_004_<slug>`; `test_L0_004_<slug>.cpp`).
 - Self-declared tests require `purpose` (`checks` and `because`) in place of a
   module docstring, and every implementation uses one form:
   `{"status": ..., "reason": ..., "issue": ..., "code": [...]}`. Implemented

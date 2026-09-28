@@ -94,6 +94,9 @@ class ImplementationStatus:
     status: str
     reason: str = ""
     issue: str = ""
+    # A native test in the implementation's own language, relative to the
+    # project root; empty when this file's own test exercises it.
+    test: str = ""
 
 
 @dataclass(frozen=True)
@@ -143,6 +146,15 @@ class TestDeclaration:
     def expect(self) -> Mapping[str, object]:
         value = self.raw.get("expect", {})
         return value if isinstance(value, Mapping) else {}
+
+    @property
+    def in_file(self) -> tuple[ImplementationStatus, ...]:
+        """Implementations this file's own test exercises (no native test, applicable)."""
+        return tuple(
+            entry
+            for entry in self.implementations
+            if not entry.test and entry.status != "not_applicable"
+        )
 
     def status_of(self, implementation: str) -> ImplementationStatus | None:
         for entry in self.implementations:
@@ -513,18 +525,22 @@ def _check_pytest_entry_point(path: Path, tree: ast.Module) -> None:
 
 
 def _check_implementations_table(path: Path, tree: ast.Module, raw: Mapping[str, object]) -> None:
-    """The file maps every declared implementation to its function, in header order.
+    """When the file itself runs several implementations, it maps each to its function.
 
-    Not-applicable implementations are left out; every other one, suspended and
-    planned included, has an entry so Rack can run it when it is selected.
+    Implementations with their own native ``test`` and not-applicable ones are
+    left out; every other one, suspended and planned included, has an entry so
+    Rack can run it when it is selected. A file that runs one implementation
+    needs no table.
     """
     keys = _implementations_table_keys(tree)
+    declared = _runnable_names(raw.get("implementations"))
+    if keys is None and len(declared) <= 1:
+        return
     if keys is None:
         raise DeclarationError(
             f"{path.name}: map each implementation to its function in a top-level "
             "IMPLEMENTATIONS = {...} dict"
         )
-    declared = _runnable_names(raw.get("implementations"))
     if keys != declared:
         raise DeclarationError(
             f"{path.name}: IMPLEMENTATIONS {keys} must list the RACK implementations "
@@ -550,7 +566,9 @@ def _runnable_names(implementations: object) -> list[str]:
     return [
         str(name)
         for name, entry in implementations.items()
-        if not (isinstance(entry, dict) and entry.get("status") == "not_applicable")
+        if isinstance(entry, dict)
+        and entry.get("status") != "not_applicable"
+        and "test" not in entry
     ]
 
 
@@ -600,7 +618,7 @@ def _parse_implementations(
     return tuple(_parse_status(path, str(name), entry) for name, entry in value.items())
 
 
-_STATUS_KEYS = frozenset({"status", "reason", "issue"})
+_STATUS_KEYS = frozenset({"status", "reason", "issue", "test"})
 
 
 def _parse_status(path: Path, name: str, entry: object) -> ImplementationStatus:
@@ -612,11 +630,19 @@ def _parse_status(path: Path, name: str, entry: object) -> ImplementationStatus:
     status = str(entry["status"])
     reason = _text(entry.get("reason", ""))
     issue = _text(entry.get("issue", ""))
+    test = _test_path(path, name, entry)
     if status != "implemented" and not reason.strip():
         raise DeclarationError(f"{path.name}: {status} {name} needs a reason")
     if status == "planned" and not issue:
         raise DeclarationError(f"{path.name}: planned {name} needs an issue")
-    return ImplementationStatus(name, status, reason, issue)
+    return ImplementationStatus(name, status, reason, issue, test)
+
+
+def _test_path(path: Path, name: str, entry: Mapping[str, object]) -> str:
+    test = entry.get("test", "")
+    if not isinstance(test, str) or ("test" in entry and not test.strip()):
+        raise DeclarationError(f"{path.name}: {name} test must be a path")
+    return test
 
 
 def _check_operations(path: Path, raw: Mapping[str, object], kind: str, pytest_form: bool) -> None:

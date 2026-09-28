@@ -209,3 +209,25 @@ def test_cli_commands_read_declared_files() -> None:
 
     audited = rack("audit", "--signoff-stratum", "L0_units")
     assert audited.returncode == 0, audited.stdout + audited.stderr
+
+
+def test_audit_holds_native_tests_to_the_naming_convention(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    source = (ROOT / "tests" / "L1_self_hosting" / "test_L1_004_plugin.py").read_text("utf-8")
+    start = source.index('NATIVE_FORM_TEST = """') + len('NATIVE_FORM_TEST = """')
+    text = source[start : source.index('"""', start)]
+    plain = suite / UNITS / "test_L0_007_plain_parse.py"
+    plain.write_text(text, encoding="utf-8")
+
+    assert audit_codes(suite) == []
+
+    renamed = suite / "rust_durations" / "tests" / "test_l0_007_parse.rs"
+    (suite / "rust_durations" / "tests" / "test_l0_007_plain_parse.rs").rename(renamed)
+    replace_in(plain, "test_l0_007_plain_parse.rs", "test_l0_007_parse.rs")
+    replace_in(renamed, "fn l0_007_plain_parse", "fn parses")
+    report = audit_suite(suite, signoff_strata=("L0_units",))
+
+    messages = [failure.message for failure in report.failures if failure.code == "native_test"]
+    assert any("must be named test_l0_007_plain_parse.rs" in m for m in messages)
+    assert any("must define fn l0_007_plain_parse" in m for m in messages)
+    assert any("does not read L0_001_parse_duration.json" in m for m in messages) is False

@@ -14,6 +14,7 @@ from rack.code_refs import project_root
 from rack.declaration_tally import DeclarationTally, require_declared, tally_declarations
 from rack.declarations import (
     DeclarationError,
+    ImplementationStatus,
     TestDeclaration,
     declaration_problems,
     declared_test_files,
@@ -521,6 +522,7 @@ def _validate_declared_suite(
             if declaration is not None:
                 _validate_declared_cases(root, stratum, declaration, failures)
                 _validate_declared_code(root, project, stratum, declaration, failures)
+                _validate_native_tests(root, project, stratum, declaration, failures)
     selected_paths = {path.resolve() for s in selected for path in declared_test_files(root / s)}
     local = [d for d in declarations if d.path.resolve() in selected_paths]
     _validate_declared_ids(root, strata, declarations, local, failures)
@@ -544,6 +546,82 @@ def _validate_declared_code(
                 subtest=declaration.path.name,
             )
         )
+
+
+def _validate_native_tests(
+    root: Path,
+    project: Path,
+    stratum: str,
+    declaration: TestDeclaration,
+    failures: list[AuditFailure],
+) -> None:
+    """A native test a header lists exists and reads the same vector files."""
+    for problem in _native_test_problems(project, declaration):
+        failures.append(
+            _failure(
+                "native_test",
+                f"{declaration.path.name}: {problem}",
+                _relative(root, declaration.path),
+                stratum=stratum,
+                subtest=declaration.path.name,
+            )
+        )
+
+
+def _native_test_problems(project: Path, declaration: TestDeclaration) -> list[str]:
+    problems: list[str] = []
+    for entry in declaration.implementations:
+        if entry.test and entry.status != "not_applicable":
+            problems += _native_test_file_problems(project, declaration, entry)
+    return problems
+
+
+def _native_test_file_problems(
+    project: Path, declaration: TestDeclaration, entry: ImplementationStatus
+) -> list[str]:
+    path = project / entry.test
+    expected_file, expected_symbol = native_test_names(declaration, path.suffix)
+    problems: list[str] = []
+    if expected_file and path.name != expected_file:
+        problems.append(f"{entry.name} test {entry.test} must be named {expected_file}")
+    if path.is_file():
+        text = path.read_text(encoding="utf-8", errors="replace")
+        problems += _native_content_problems(declaration, entry, text, expected_symbol)
+    elif entry.status == "implemented":
+        problems.append(f"{entry.name} test {entry.test} does not exist")
+    return problems
+
+
+def _native_content_problems(
+    declaration: TestDeclaration, entry: ImplementationStatus, text: str, symbol: str
+) -> list[str]:
+    problems: list[str] = []
+    if symbol and f"fn {symbol}(" not in text:
+        problems.append(f"{entry.name} test {entry.test} must define fn {symbol}")
+    vectors = [Path(item).name for item in declaration.resources if item.endswith(".json")]
+    problems += [
+        f"{entry.name} test {entry.test} does not read {name}"
+        for name in vectors
+        if name not in text
+    ]
+    return problems
+
+
+def native_test_names(declaration: TestDeclaration, suffix: str) -> tuple[str, str]:
+    """The file name and test function a native test must use, by language.
+
+    Both come from the test's id and the slug of its Python file name, so one
+    test reads the same in every language: test_L0_004_parse_byte_record.py,
+    test_l0_004_parse_byte_record.rs with fn l0_004_parse_byte_record, and
+    test_L0_004_parse_byte_record.cpp.
+    """
+    slug = declaration.path.stem.removeprefix(f"test_{declaration.id}_")
+    if suffix == ".rs":
+        name = f"{declaration.id.lower()}_{slug}"
+        return f"test_{name}.rs", name
+    if suffix == ".cpp":
+        return f"test_{declaration.id}_{slug}.cpp", ""
+    return "", ""
 
 
 def _suite_declarations(root: Path, strata: tuple[str, ...]) -> list[TestDeclaration]:

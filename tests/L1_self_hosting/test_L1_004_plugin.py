@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_SUITE = ROOT / "tests" / "fixtures" / "declared_suite"
 TEST_L0_001 = Path("L0_units") / "test_L0_001_parse_duration.py"
@@ -371,3 +373,64 @@ def test_pytest_form_files_are_collected_by_pytest_not_rack(tmp_path: Path) -> N
     # The header no longer matches the table, so no row may run.
     assert rows["test_parse_duration[hours_and_minutes-python]"][0] == "error"
     assert "invalid RACK header" in invalid.stdout
+
+
+NATIVE_FORM_TEST = """import json
+from pathlib import Path
+
+import pytest
+from suite_support import durations
+
+RACK = {
+    "id": "L0_007",
+    "title": "Duration parsing, each implementation in its own language",
+    "purpose": {
+        "checks": "Parsing duration strings returns the whole seconds they spell.",
+        "because": "Callers schedule work from these seconds; a wrong parse shifts every deadline.",
+    },
+    "resources": ["vectors/L0_001_parse_duration.json"],
+    "implementations": {
+        "python": {"status": "implemented"},
+        "rust": {
+            "status": "implemented",
+            "test": "rust_durations/tests/test_l0_007_plain_parse.rs",
+        },
+    },
+}
+
+VECTORS = Path(__file__).parent / "vectors" / "L0_001_parse_duration.json"
+CASES = json.loads(VECTORS.read_text(encoding="utf-8"))["cases"]
+
+
+@pytest.mark.parametrize("case", CASES, ids=[case["id"] for case in CASES])
+def test_plain_parse(case):
+    assert durations.parse_duration(case["inputs"]["text"]) == case["expect"]["seconds"]
+"""
+
+
+@pytest.mark.skipif(shutil.which("cargo") is None, reason="needs a Rust toolchain")
+def test_native_rust_test_is_one_cargo_row(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    plain = suite / "L0_units" / "test_L0_007_plain_parse.py"
+    plain.write_text(NATIVE_FORM_TEST, encoding="utf-8")
+
+    result, rows = run_suite(suite)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert rows["test_plain_parse[hours_and_minutes]"][:2] == ("passed", "pass")
+    assert rows["L0_007[rust]"][:2] == ("passed", "pass")
+
+    rust_test = suite / "rust_durations" / "tests" / "test_l0_007_plain_parse.rs"
+    replace_in(rust_test, '"1h30m"), 5400', '"1h30m"), 5401')
+    failed, rows = run_suite(suite)
+    assert rows["L0_007[rust]"][:2] == ("failed", "fail")
+    assert "cargo test -p rust-durations --test test_l0_007_plain_parse" in failed.stdout
+    assert "left: 5400" in failed.stdout
+
+    replace_in(
+        plain,
+        '"status": "implemented",\n            "test"',
+        '"status": "suspended",\n            "reason": "port paused",\n            "test"',
+    )
+    _, rows = run_suite(suite)
+    assert rows["L0_007[rust]"] == ("skipped", "suspended", "suspended: port paused")

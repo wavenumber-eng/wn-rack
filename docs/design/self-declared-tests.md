@@ -148,6 +148,47 @@ crash, or timeout fault raises and becomes the `error` outcome.
 
 Rows are pytest items, so conftest fixtures still apply to services.
 
+## Plain tests and native tests
+
+The preferred form is boring on purpose. A test file is an ordinary pytest
+test with a `RACK` header: it loads its own vector file, calls the code it
+tests, and asserts against the vector's expected value. Rack is not in the
+loop of what a test does; it runs, organizes, reports, and audits.
+
+Every implementation is judged against the same independent reference (the
+vector file or a captured authority), never against another implementation,
+and each test lives in its own files so work in different strata merges
+without conflicts. An implementation in another language has its own native
+test that reads the same vector file, for example a plain `cargo test`:
+
+```python
+"implementations": {
+    "python": {"status": "implemented"},          # this file's own test
+    "rust": {"status": "implemented",
+             "test": "src/rs/core/tests/test_l0_004_parse_byte_record.rs"},
+    "cpp": {"status": "suspended", "reason": "port paused",
+            "test": "src/cpp/tests/L0_foundation/test_L0_004_parse_byte_record.cpp"},
+},
+"resources": ["vectors/L0_004_parse_byte_record.json"],
+```
+
+Rack runs each native test as one row with the language's own runner
+(`cargo test -p <package> --test <file stem>` from the package directory) and
+records pass or fail and the runner's output. The native test knows nothing
+about Rack or Python. Statuses decide what runs: implemented rows run; planned
+and suspended rows are skipped with their reason unless `--rack-impl` selects
+them, and then a failure is reported without failing the run.
+
+When one file exercises several implementations itself, it maps each to its
+function in a top-level `IMPLEMENTATIONS` dict (same names, same order as the
+header) and parametrizes over `implementation`.
+
+`rack audit` checks that each native test exists, reads the test's vector
+files, and follows one naming convention derived from the id and the Python
+file's slug: `test_L0_004_parse_byte_record.py`,
+`test_l0_004_parse_byte_record.rs` defining `fn l0_004_parse_byte_record`, and
+`test_L0_004_parse_byte_record.cpp`.
+
 ## Tracing
 
 `rack.toml` names one operation registry (`[operations] registry`, relative

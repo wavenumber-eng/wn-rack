@@ -30,15 +30,24 @@ NON_GATING = ("planned", "suspended")
 
 
 def declared_row(item: pytest.Item) -> tuple[TestDeclaration | str, str] | None:
-    """The header (or why it is invalid) and implementation name of a pytest-form row."""
-    callspec = getattr(item, "callspec", None)
-    implementation = callspec.params.get("implementation") if callspec else None
-    if not isinstance(implementation, str):
-        return None
+    """The header (or why it is invalid) and implementation name of a pytest-form row.
+
+    A row's implementation is its ``implementation`` parameter, a native test's
+    own entry, or, for a file that runs one implementation, that one.
+    """
+    native = getattr(item, "rack_native_row", None)
+    if native is not None:
+        return native
     declaration = _pytest_declaration(Path(str(item.path)))
     if declaration is None:
         return None
-    return declaration, implementation
+    callspec = getattr(item, "callspec", None)
+    implementation = callspec.params.get("implementation") if callspec else None
+    if isinstance(implementation, str):
+        return declaration, implementation
+    if isinstance(declaration, TestDeclaration) and len(declaration.in_file) == 1:
+        return declaration, declaration.in_file[0].name
+    return None
 
 
 def block_reason(declaration: TestDeclaration | str, name: str) -> str | None:

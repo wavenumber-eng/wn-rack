@@ -141,6 +141,14 @@ test_case_type = "synthetic"
 test_cases = "../fixtures/declared_suite"
 
 [[subtests.code_under_test]]
+module = "rack.native_tests"
+functions = ["cargo_command", "native_items"]
+
+[[subtests.code_under_test]]
+module = "rack.status_rows"
+functions = ["declared_row", "skip_reason", "settle", "record"]
+
+[[subtests.code_under_test]]
 module = "rack.tracing"
 functions = ["load_registry", "operations_constructed", "trace_declaration", "trace_problems", "declared_calls"]
 

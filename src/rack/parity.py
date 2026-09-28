@@ -37,6 +37,7 @@ DECLARATION_AUDIT_CODES = frozenset(
         "invalid_declaration",
         "test_module_import",
         "untraced",
+        "native_test",
     }
 )
 

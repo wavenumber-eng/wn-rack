@@ -50,7 +50,7 @@ from rack.outcomes import (
     difference_to_dict,
 )
 from rack.tracing import trace_problems
-from rack import status_rows
+from rack import native_tests, status_rows
 
 CHECK_IMPLEMENTATION = "check"
 DEFAULT_LANES = ("fast", "full", "strict")
@@ -107,7 +107,11 @@ def _report_status_row(
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Run or skip pytest-form rows by their RACK status (see rack.status_rows)."""
+    """Run or skip pytest-form rows by their RACK status (see rack.status_rows).
+
+    Native tests the headers list (see rack.native_tests) are added as rows first.
+    """
+    items.extend(_native_rows(config, items))
     markers = _registered_markers(config)
     selected = _selected_implementations(config)
     for item in items:
@@ -129,6 +133,22 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         reason = status_rows.skip_reason(status, selected)
         if reason is not None:
             item.add_marker(pytest.mark.skip(reason=reason))
+
+
+def _native_rows(config: pytest.Config, items: list[pytest.Item]) -> list[pytest.Item]:
+    added: list[pytest.Item] = []
+    seen: set[Path] = set()
+    for item in items:
+        row = status_rows.declared_row(item)
+        module = item.getparent(pytest.Module)
+        if row is None or module is None or module.path in seen:
+            continue
+        seen.add(module.path)
+        declaration = row[0]
+        if isinstance(declaration, TestDeclaration):
+            root = _suite_for(config, module.path).project_root()
+            added.extend(native_tests.native_items(module, declaration, root))
+    return added
 
 
 def pytest_runtest_setup(item: pytest.Item) -> None:
