@@ -154,14 +154,20 @@ the case ids as pytest ids; Rack records each row under the case's `id`.
   the reason. It is recorded as a `deferred` row with that reason, and the
   strict mark fails the run once the case passes, until the mark is removed.
 - Every row of a file whose header is invalid errors, and so does a row for an
-  implementation the header does not declare.
+  implementation the header does not declare. A row whose setup or teardown
+  fails, such as a fixture error, is an `error` row.
 - For each header entry with a `test` ending in `.rs`, Rack adds one row that
   runs the native test. Rust tests of one crate run in a single
   `cargo test --no-fail-fast -p <crate> --test <a> --test <b> ...` call per run,
   from the package directory, for every selected Rust test whose file exists.
   Each row reads its own test binary's section of the output and passes only
   when cargo reports that the function the convention names (the file name
-  without `test_`) passed. A missing file fails only its row; a binary that
+  without `test_`) passed. A native test that tolerates a known failure (a
+  Rust `KNOWN_FAILURES` entry) prints `rack-deferred: <case id>: <reason>`
+  for it; a passing test that printed such lines is a `deferred` row with
+  them as its detail, since cargo's own result cannot show the failure. Cargo
+  runs with `--show-output` so a passing test's lines reach Rack. A missing
+  file fails only its row; a binary that
   did not run (usually a build failure) reruns alone, so one broken file does
   not fail its neighbors. Under pytest-xdist each row runs its own cargo call.
 - Rows carry a marker named after their implementation, so a suite's existing
@@ -192,6 +198,8 @@ A native row's case is its test file's name.
 `rack audit` reads files only; it imports and builds nothing.
 
 - Header rules above, each reported on its own (`invalid_declaration`).
+- Known failures (`known_failure`): every `xfail` mark is strict, and no test
+  calls `pytest.xfail()`, so a known failure fails the run once it passes.
 - Resources (`invalid_resource`): each listed file exists and is named in the
   plain test's source outside its header.
 - Reference files (`invalid_cases`): a vector file's schema, provenance, and

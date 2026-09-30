@@ -101,7 +101,7 @@ entry (`"test": "crate/tests/test_l0_001_parse_duration.rs"`).
 | `expect.source = "budget"` | Measure in the test body and assert the budget there. |
 | `operations`, the operation registry, adapters, `impl.batch` | Call the implementation directly; list the functions each implementation exercises in its `code` entries, which `rack audit` resolves. |
 | `rack trace` | The header's `code` entries and the audit's `code` rule. |
-| `deferred` | A strict `xfail` on the row, with the tracking issue in its reason. |
+| `deferred` | A strict `xfail` on the row, with the tracking issue in its reason; in a native test, a `rack-deferred: <case id>: <reason>` line for each known failure it tolerates. |
 | Services | Module-level helpers or pytest fixtures. |
 | Case lanes | The test decides which cases it runs. |
 | `case.workdir` | pytest's `tmp_path`. |
@@ -123,6 +123,10 @@ imports a self-declared module.
 - Implementation selection (`--rack-impl`, `rack run --impl`) never skips a
   check's rows.
 - A strict `xfail` row is recorded as `deferred`, with its reason, and
-  `rack parity` lists it under deferred cases.
+  `rack parity` lists it under deferred cases. `rack audit` rejects a
+  non-strict `xfail` mark and `pytest.xfail()` (`known_failure`).
+- A passing native test that prints `rack-deferred: <case id>: <reason>`
+  lines is a `deferred` row with those lines as its detail.
+- A row whose setup or teardown fails is an `error` row.
 - `rack parity` counts a test's cases from the vector files its header lists
   in `resources`, and from its latest rows when it lists none.

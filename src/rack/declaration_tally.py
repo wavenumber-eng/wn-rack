@@ -29,6 +29,7 @@ SUITE_REQUIREMENTS = {
     "invalid_resource": "resource_files",
     "unresolved_code": "code",
     "native_test": "native_tests",
+    "known_failure": "strict_known_failures",
     "duplicate_test_id": "unique_id",
     "test_module_import": "no_test_imports",
     "declared_file_in_manifest": "no_stratum_entry",

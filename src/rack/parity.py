@@ -40,6 +40,7 @@ DECLARATION_AUDIT_CODES = frozenset(
         "test_module_import",
         "unresolved_code",
         "native_test",
+        "known_failure",
     }
 )
 

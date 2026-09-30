@@ -226,6 +226,23 @@ def native_messages(suite: Path) -> list[str]:
     return [failure.message for failure in report.failures if failure.code == "native_test"]
 
 
+def test_audit_requires_a_known_failure_to_be_a_strict_xfail(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    test = suite / TEST_L0_001
+    assert audit_codes(suite) == []
+
+    replace_in(
+        test, "pytest.mark.xfail(strict=True, reason=known)", "pytest.mark.xfail(reason=known)"
+    )
+    assert audit_codes(suite) == ["known_failure"]
+
+    replace_in(test, "request.applymarker(pytest.mark.xfail(reason=known))", "pytest.xfail(known)")
+    report = audit_suite(suite, signoff_strata=("L0_units",))
+    assert [failure.message for failure in report.failures] == [
+        "test_L0_001_parse_duration.py: line 48: pytest.xfail() cannot be strict; mark the case"
+    ]
+
+
 def test_audit_holds_native_tests_to_the_naming_convention(tmp_path: Path) -> None:
     suite = copy_suite(tmp_path)
     plain = suite / UNITS / "test_L0_007_plain_parse.py"

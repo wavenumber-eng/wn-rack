@@ -227,6 +227,29 @@ def test_a_failing_row_is_a_fail_row(tmp_path: Path) -> None:
     assert "plugin.py" not in result.stdout
 
 
+def test_a_row_whose_setup_fails_is_an_error_row(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    (suite / "conftest.py").write_text(
+        "import pytest\n\n\n"
+        "@pytest.fixture(autouse=True)\n"
+        "def corpus(request):\n"
+        "    if request.node.name == 'test_duration_parsing[hours_and_minutes-shadow]':\n"
+        "        raise RuntimeError('the corpus is not mounted')\n",
+        encoding="utf-8",
+    )
+
+    result, rows = run_suite(suite)
+
+    # A fixture error is an error row, so parity counts it instead of losing it.
+    assert result.returncode == 1
+    assert rows["test_duration_parsing[hours_and_minutes-shadow]"] == (
+        "error",
+        "error",
+        "RuntimeError: the corpus is not mounted",
+    )
+    assert rows["test_duration_parsing[long_form-shadow]"][:2] == ("passed", "pass")
+
+
 SELF_SKIPPING_TEST = """import pytest
 
 RACK = {
@@ -439,6 +462,32 @@ def test_native_row_passes_only_when_its_named_test_function_passes(tmp_path: Pa
     # Cargo reports "test result: ok." but not the test the convention names.
     assert rows["L0_007[rust]"][:2] == ("failed", "fail")
     assert "cargo did not report a passing test named l0_007_plain_parse" in result.stdout
+
+
+@pytest.mark.skipif(shutil.which("cargo") is None, reason="needs a Rust toolchain")
+def test_a_known_failure_a_native_test_reports_is_a_deferred_row(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    (suite / "L0_units" / "test_L0_007_plain_parse.py").write_text(
+        NATIVE_FORM_TEST, encoding="utf-8"
+    )
+    rust_test = suite / "rust_durations" / "tests" / "test_l0_007_plain_parse.rs"
+    replace_in(
+        rust_test,
+        "    assert!(failures.is_empty()",
+        '    println!("rack-deferred: long_form: #4 minutes are not ported");\n'
+        '    println!("rack-deferred: fractional_hours: #5 truncates");\n'
+        "    assert!(failures.is_empty()",
+    )
+
+    result, rows = run_suite(suite)
+
+    # Cargo passes the test, but the known failures it tolerates stay visible.
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert rows["L0_007[rust]"] == (
+        "xfailed",
+        "deferred",
+        "long_form: #4 minutes are not ported; fractional_hours: #5 truncates",
+    )
 
 
 SECOND_NATIVE_TEST = (

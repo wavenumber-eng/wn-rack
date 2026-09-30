@@ -124,11 +124,14 @@ def settle(report: pytest.TestReport, status: ImplementationStatus) -> tuple[str
     A selected planned or suspended row that fails is turned into an expected
     failure, so it is reported without failing the run. A known failure the
     test marks with a strict ``xfail`` is a deferred row, with the xfail
-    reason as its detail.
+    reason as its detail. A row whose setup or teardown fails, such as a
+    fixture error, is an error row.
     """
     if report.when == "setup" and report.skipped:
         detail = _skip_detail(report)
         return _skip_outcome(detail), detail
+    if report.when in ("setup", "teardown") and report.failed:
+        return "error", _error_detail(report)
     if report.when != "call":
         return None
     if report.failed and status.status in NON_GATING:
@@ -143,6 +146,14 @@ def settle(report: pytest.TestReport, status: ImplementationStatus) -> tuple[str
         detail = _skip_detail(report)
         return _skip_outcome(detail), detail
     return ("pass" if report.passed else "fail"), ""
+
+
+def _error_detail(report: pytest.TestReport) -> str:
+    crash = getattr(report.longrepr, "reprcrash", None)
+    message = getattr(crash, "message", None)
+    if isinstance(message, str) and message:
+        return message
+    return (report.longreprtext.splitlines() or [""])[-1]
 
 
 def _skip_detail(report: pytest.TestReport) -> str:

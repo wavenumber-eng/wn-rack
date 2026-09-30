@@ -3,12 +3,15 @@
 A header entry such as ``"rust": {"status": "implemented", "test":
 "src/rs/core/tests/test_l0_004_parse.rs"}`` names a test in the
 implementation's own language. Rack runs it with the language's own runner
-and records only pass or fail and the runner's output. The native test itself
-knows nothing about Rack.
+and records pass or fail and the runner's output.
 
 A Rust row passes only when cargo reports that the test function named by the
 convention (the file name without ``test_``) passed, so a file that defines no
-such test, or runs zero tests, fails.
+such test, or runs zero tests, fails. A passing test that printed a line
+``rack-deferred: <case id>: <reason>`` for a known failure it tolerates is a
+deferred row whose detail lists those lines, so a known failure stays visible
+although the test passes. Cargo runs with ``--show-output`` so a passing test's
+lines reach Rack.
 
 Rust tests are batched: the first row of a crate to run starts one
 ``cargo test --no-fail-fast -p <crate> --test <a> --test <b> ...`` for every
@@ -38,6 +41,7 @@ OUTPUT_TAIL_LINES = 60
 # Cargo announces each test binary it runs: "Running tests\\test_x.rs (target\\...)".
 _RUNNING = re.compile(r"^\s*Running (?:tests[\\/])?(?P<stem>[\w-]+)\.rs\b", re.MULTILINE)
 _SECTION_END = re.compile(r"^\s*(?:Running |Doc-tests )", re.MULTILINE)
+_DEFERRED = re.compile(r"^rack-deferred: (?P<detail>.+?)\s*$", re.MULTILINE)
 
 
 class NativeTestFailure(Exception):
@@ -59,6 +63,8 @@ class TargetResult:
     output: str
     # False when cargo never ran the binary, usually because the build failed.
     ran: bool = True
+    # The known failures a passing test reported with rack-deferred lines.
+    deferred: tuple[str, ...] = ()
 
 
 _BATCHES = pytest.StashKey[dict[tuple[str, str], dict[str, TargetResult]]]()
@@ -91,6 +97,8 @@ class CargoTest(pytest.Item):
         result = self._result(target)
         if not result.passed:
             raise NativeTestFailure(result.output)
+        if result.deferred:
+            pytest.xfail("; ".join(result.deferred))
 
     def _result(self, target: CargoTarget) -> TargetResult:
         if os.environ.get("PYTEST_XDIST_WORKER"):
@@ -157,6 +165,7 @@ def run_cargo(package_dir: Path, package: str, stems: list[str]) -> dict[str, Ta
     """Run the named test binaries in one cargo call and split the result per binary."""
     command = ["cargo", "test", "--no-fail-fast", "-p", package]
     command += [argument for stem in stems for argument in ("--test", stem)]
+    command += ["--", "--show-output"]
     # One stream keeps cargo's "Running" lines in order with each binary's output.
     completed = subprocess.run(
         command,
@@ -188,7 +197,8 @@ def _section_result(header: str, stem: str, section: str) -> TargetResult:
         if "test result: ok." in section:
             output += f"\ncargo did not report a passing test named {function}"
         return TargetResult(False, output)
-    return TargetResult("test result: ok." in section, output)
+    deferred = tuple(match.group("detail") for match in _DEFERRED.finditer(section))
+    return TargetResult("test result: ok." in section, output, deferred=deferred)
 
 
 def split_sections(output: str) -> dict[str, str]:

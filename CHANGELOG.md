@@ -14,6 +14,15 @@
 - A strict `xfail` on a plain row is recorded as a `deferred` row with its
   reason, and `rack parity` lists it as a deferred case. `rack parity` counts
   a plain test's cases from the vector files its header lists in `resources`.
+- `rack audit` requires every `xfail` mark in a self-declared file to be
+  strict and rejects `pytest.xfail()` (`known_failure`, tally row
+  `strict_known_failures`), so a known failure cannot outlive its fix.
+- A row whose setup or teardown fails, such as a fixture error, is recorded as
+  an `error` row; before, it had no outcome and `rack parity` never counted it.
+- A passing native test that prints `rack-deferred: <case id>: <reason>` for
+  a known failure it tolerates is a `deferred` row with those lines as its
+  detail; before, it was recorded as passing. Cargo runs with
+  `--show-output` so the lines reach Rack.
 - Implementation selection never skips a check's rows.
 - A plain row the test skips itself (`pytest.skip` in its body) is recorded as
   skipped; before, Rack recorded it as a failure and `rack parity` counted it.

@@ -526,6 +526,7 @@ def _validate_declared_suite(
                 _validate_declared_resources(root, stratum, declaration, failures)
                 _validate_declared_code(root, project, stratum, declaration, failures)
                 _validate_native_tests(root, project, stratum, declaration, failures)
+                _validate_known_failures(root, stratum, declaration, failures)
     selected_paths = {path.resolve() for s in selected for path in declared_test_files(root / s)}
     local = [d for d in declarations if d.path.resolve() in selected_paths]
     _validate_declared_ids(root, strata, declarations, local, failures)
@@ -638,6 +639,58 @@ def _validate_native_tests(
                 subtest=declaration.path.name,
             )
         )
+
+
+def _validate_known_failures(
+    root: Path, stratum: str, declaration: TestDeclaration, failures: list[AuditFailure]
+) -> None:
+    for problem in known_failure_problems(declaration.path):
+        failures.append(
+            _failure(
+                "known_failure",
+                f"{declaration.path.name}: {problem}",
+                _relative(root, declaration.path),
+                stratum=stratum,
+                subtest=declaration.path.name,
+            )
+        )
+
+
+def known_failure_problems(path: Path) -> list[str]:
+    """A known failure is an ``xfail`` mark with ``strict=True``.
+
+    Only a strict mark fails the run once the case passes, so a known failure
+    cannot outlive its fix; a non-strict mark or an imperative
+    ``pytest.xfail()`` would be recorded as deferred forever.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    called = {id(node.func): node for node in ast.walk(tree) if isinstance(node, ast.Call)}
+    problems = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Attribute) and node.attr == "xfail"):
+            continue
+        call = called.get(id(node))
+        if not _is_mark(node.value):
+            problems.append(f"line {node.lineno}: pytest.xfail() cannot be strict; mark the case")
+        elif call is None or not _is_strict(call):
+            problems.append(f"line {node.lineno}: an xfail mark needs strict=True")
+    return problems
+
+
+def _is_mark(node: ast.expr) -> bool:
+    """``pytest.mark`` or ``mark``: the object an xfail mark hangs off."""
+    return (isinstance(node, ast.Attribute) and node.attr == "mark") or (
+        isinstance(node, ast.Name) and node.id == "mark"
+    )
+
+
+def _is_strict(call: ast.Call) -> bool:
+    return any(
+        keyword.arg == "strict"
+        and isinstance(keyword.value, ast.Constant)
+        and keyword.value.value is True
+        for keyword in call.keywords
+    )
 
 
 def listed_code_problems(project: Path, declaration: TestDeclaration) -> list[str]:
