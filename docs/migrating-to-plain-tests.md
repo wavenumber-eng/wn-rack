@@ -126,7 +126,8 @@ imports a self-declared module.
   `rack parity` lists it under deferred cases. `rack audit` rejects a
   non-strict `xfail` mark and `pytest.xfail()` (`known_failure`).
 - A passing native test that prints `rack-deferred: <case id>: <reason>`
-  lines is a `deferred` row with those lines as its detail.
+  lines is a `deferred` row with those lines as its detail; one that prints
+  only `rack-skipped: <reason>` lines is a `skipped` row.
 - A row whose setup or teardown fails is an `error` row.
 - `rack parity` counts a test's cases from the vector files its header lists
   in `resources`, and from its latest rows when it lists none.

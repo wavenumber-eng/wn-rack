@@ -21,8 +21,10 @@
   an `error` row; before, it had no outcome and `rack parity` never counted it.
 - A passing native test that prints `rack-deferred: <case id>: <reason>` for
   a known failure it tolerates is a `deferred` row with those lines as its
-  detail; before, it was recorded as passing. Cargo runs with
-  `--show-output` so the lines reach Rack.
+  detail, and one that prints `rack-skipped: <reason>` for cases it did not
+  run (such as corpus cases without a corpus) is a `skipped` row; before,
+  both were recorded as passing. Cargo runs with `--show-output` so the lines
+  reach Rack.
 - Implementation selection never skips a check's rows.
 - A plain row the test skips itself (`pytest.skip` in its body) is recorded as
   skipped; before, Rack recorded it as a failure and `rack parity` counted it.

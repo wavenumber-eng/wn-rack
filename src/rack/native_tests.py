@@ -7,11 +7,18 @@ and records pass or fail and the runner's output.
 
 A Rust row passes only when cargo reports that the test function named by the
 convention (the file name without ``test_``) passed, so a file that defines no
-such test, or runs zero tests, fails. A passing test that printed a line
-``rack-deferred: <case id>: <reason>`` for a known failure it tolerates is a
-deferred row whose detail lists those lines, so a known failure stays visible
-although the test passes. Cargo runs with ``--show-output`` so a passing test's
-lines reach Rack.
+such test, or runs zero tests, fails. A native test reports what cargo's own
+result cannot show with lines on standard output:
+
+- ``rack-deferred: <case id>: <reason>`` for a known failure it tolerates. A
+  passing test that printed one is a deferred row.
+- ``rack-skipped: <reason>`` for cases it did not run, such as corpus cases
+  without a corpus. A passing test that printed one, and no deferred line, is
+  a skipped row.
+
+The row's detail lists those lines, so a passing test cannot hide a known
+failure or a case it skipped. Cargo runs with ``--show-output`` so a passing
+test's lines reach Rack.
 
 Rust tests are batched: the first row of a crate to run starts one
 ``cargo test --no-fail-fast -p <crate> --test <a> --test <b> ...`` for every
@@ -41,7 +48,7 @@ OUTPUT_TAIL_LINES = 60
 # Cargo announces each test binary it runs: "Running tests\\test_x.rs (target\\...)".
 _RUNNING = re.compile(r"^\s*Running (?:tests[\\/])?(?P<stem>[\w-]+)\.rs\b", re.MULTILINE)
 _SECTION_END = re.compile(r"^\s*(?:Running |Doc-tests )", re.MULTILINE)
-_DEFERRED = re.compile(r"^rack-deferred: (?P<detail>.+?)\s*$", re.MULTILINE)
+_MARKER = re.compile(r"^rack-(?P<kind>deferred|skipped): (?P<detail>.+?)\s*$", re.MULTILINE)
 
 
 class NativeTestFailure(Exception):
@@ -63,8 +70,9 @@ class TargetResult:
     output: str
     # False when cargo never ran the binary, usually because the build failed.
     ran: bool = True
-    # The known failures a passing test reported with rack-deferred lines.
+    # What a passing test reported with rack-deferred and rack-skipped lines.
     deferred: tuple[str, ...] = ()
+    skipped: tuple[str, ...] = ()
 
 
 _BATCHES = pytest.StashKey[dict[tuple[str, str], dict[str, TargetResult]]]()
@@ -99,6 +107,8 @@ class CargoTest(pytest.Item):
             raise NativeTestFailure(result.output)
         if result.deferred:
             pytest.xfail("; ".join(result.deferred))
+        if result.skipped:
+            pytest.skip("; ".join(result.skipped))
 
     def _result(self, target: CargoTarget) -> TargetResult:
         if os.environ.get("PYTEST_XDIST_WORKER"):
@@ -197,8 +207,13 @@ def _section_result(header: str, stem: str, section: str) -> TargetResult:
         if "test result: ok." in section:
             output += f"\ncargo did not report a passing test named {function}"
         return TargetResult(False, output)
-    deferred = tuple(match.group("detail") for match in _DEFERRED.finditer(section))
-    return TargetResult("test result: ok." in section, output, deferred=deferred)
+    markers = [(match.group("kind"), match.group("detail")) for match in _MARKER.finditer(section)]
+    return TargetResult(
+        "test result: ok." in section,
+        output,
+        deferred=tuple(detail for kind, detail in markers if kind == "deferred"),
+        skipped=tuple(detail for kind, detail in markers if kind == "skipped"),
+    )
 
 
 def split_sections(output: str) -> dict[str, str]:

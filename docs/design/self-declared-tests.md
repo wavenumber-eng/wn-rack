@@ -165,7 +165,10 @@ the case ids as pytest ids; Rack records each row under the case's `id`.
   without `test_`) passed. A native test that tolerates a known failure (a
   Rust `KNOWN_FAILURES` entry) prints `rack-deferred: <case id>: <reason>`
   for it; a passing test that printed such lines is a `deferred` row with
-  them as its detail, since cargo's own result cannot show the failure. Cargo
+  them as its detail, since cargo's own result cannot show the failure. One
+  that skipped cases, such as corpus cases without a corpus, prints
+  `rack-skipped: <reason>`, and a passing test that printed only such lines
+  is a `skipped` row. Cargo
   runs with `--show-output` so a passing test's lines reach Rack. A missing
   file fails only its row; a binary that
   did not run (usually a build failure) reruns alone, so one broken file does

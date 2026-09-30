@@ -490,6 +490,31 @@ def test_a_known_failure_a_native_test_reports_is_a_deferred_row(tmp_path: Path)
     )
 
 
+@pytest.mark.skipif(shutil.which("cargo") is None, reason="needs a Rust toolchain")
+def test_cases_a_native_test_skips_make_a_skipped_row(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    (suite / "L0_units" / "test_L0_007_plain_parse.py").write_text(
+        NATIVE_FORM_TEST, encoding="utf-8"
+    )
+    rust_test = suite / "rust_durations" / "tests" / "test_l0_007_plain_parse.rs"
+    replace_in(
+        rust_test,
+        "    assert!(failures.is_empty()",
+        '    println!("rack-skipped: WN_TEST_CORPUS is not set; the corpus cases did not run");\n'
+        "    assert!(failures.is_empty()",
+    )
+
+    result, rows = run_suite(suite)
+
+    # A test that returns early without its corpus is not a pass.
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert rows["L0_007[rust]"] == (
+        "skipped",
+        "skipped",
+        "WN_TEST_CORPUS is not set; the corpus cases did not run",
+    )
+
+
 SECOND_NATIVE_TEST = (
     NATIVE_FORM_TEST.replace('"id": "L0_007"', '"id": "L0_008"')
     .replace("test_l0_007_plain_parse.rs", "test_l0_008_plain_round_trip.rs")
