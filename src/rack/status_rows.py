@@ -138,6 +138,10 @@ def settle(report: pytest.TestReport, status: ImplementationStatus) -> tuple[str
         return status.status, detail
     if report.skipped and hasattr(report, "wasxfail"):
         return "deferred", str(report.wasxfail).removeprefix("reason: ")
+    if report.skipped:
+        # The test skipped itself, for example a case outside the active lane.
+        detail = _skip_detail(report)
+        return _skip_outcome(detail), detail
     return ("pass" if report.passed else "fail"), ""
 
 

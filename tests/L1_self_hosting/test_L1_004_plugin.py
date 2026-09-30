@@ -227,6 +227,40 @@ def test_a_failing_row_is_a_fail_row(tmp_path: Path) -> None:
     assert "plugin.py" not in result.stdout
 
 
+SELF_SKIPPING_TEST = """import pytest
+
+RACK = {
+    "id": "L0_008",
+    "title": "Strict-lane case",
+    "purpose": {
+        "checks": "A case the test skips itself is recorded as skipped.",
+        "because": "A skip counted as a failure would misreport parity.",
+    },
+    "implementations": {"python": {"status": "implemented"}},
+}
+
+
+def test_strict_lane_case():
+    pytest.skip("the whole-corpus case runs in the strict lane")
+"""
+
+
+def test_a_row_the_test_skips_itself_is_a_skipped_row(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    (suite / "L0_units" / "test_L0_008_strict_lane.py").write_text(
+        SELF_SKIPPING_TEST, encoding="utf-8"
+    )
+
+    result, rows = run_suite(suite)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert rows["test_strict_lane_case"] == (
+        "skipped",
+        "skipped",
+        "the whole-corpus case runs in the strict lane",
+    )
+
+
 def test_legacy_file_mentioning_rack_text_is_not_captured(tmp_path: Path) -> None:
     suite = copy_suite(tmp_path)
     legacy = suite / "L0_units" / "test_L0_005_mentions_rack.py"

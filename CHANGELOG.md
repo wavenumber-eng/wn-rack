@@ -15,6 +15,8 @@
   reason, and `rack parity` lists it as a deferred case. `rack parity` counts
   a plain test's cases from the vector files its header lists in `resources`.
 - Implementation selection never skips a check's rows.
+- A plain row the test skips itself (`pytest.skip` in its body) is recorded as
+  skipped; before, Rack recorded it as a failure and `rack parity` counted it.
 - Rack puts a suite's root on `sys.path` before it imports a self-declared
   module, so plain tests can import suite code.
 
