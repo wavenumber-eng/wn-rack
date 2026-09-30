@@ -57,6 +57,9 @@ def _report_status_row(
     settled = status_rows.settle(report, status)
     if row is not None and isinstance(row[0], TestDeclaration) and settled is not None:
         status_rows.record(item, row[0], status, *settled)
+        # pytest copied the item's properties into this report before this hook
+        # ran; the teardown report is the one reports read, so refresh it.
+        report.user_properties = list(item.user_properties)
 
 
 @pytest.hookimpl(tryfirst=True)

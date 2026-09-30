@@ -243,6 +243,28 @@ def test_audit_requires_a_known_failure_to_be_a_strict_xfail(tmp_path: Path) -> 
     ]
 
 
+def test_known_failure_rule_follows_pytest_names(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    test = suite / TEST_L0_001
+    test.write_text(
+        test.read_text(encoding="utf-8") + "\n\ndef _probe():\n"
+        "    from pytest import mark as m, xfail as fail\n"
+        "    _ = pytest.xfail.Exception\n"
+        '    fail("imperative")\n'
+        '    return m.xfail(reason="not strict")\n',
+        encoding="utf-8",
+    )
+
+    report = audit_suite(suite, signoff_strata=("L0_units",))
+
+    # An aliased import is still caught; pytest.xfail.Exception is not a mark.
+    problems = sorted(failure.message.split(": ", 2)[2] for failure in report.failures)
+    assert problems == [
+        "an xfail mark needs strict=True",
+        "pytest.xfail() cannot be strict; mark the case",
+    ]
+
+
 def test_audit_holds_native_tests_to_the_naming_convention(tmp_path: Path) -> None:
     suite = copy_suite(tmp_path)
     plain = suite / UNITS / "test_L0_007_plain_parse.py"

@@ -250,6 +250,28 @@ def test_a_row_whose_setup_fails_is_an_error_row(tmp_path: Path) -> None:
     assert rows["test_duration_parsing[long_form-shadow]"][:2] == ("passed", "pass")
 
 
+def test_a_row_whose_teardown_fails_is_an_error_row(tmp_path: Path) -> None:
+    suite = copy_suite(tmp_path)
+    (suite / "conftest.py").write_text(
+        "import pytest\n\n\n"
+        "@pytest.fixture(autouse=True)\n"
+        "def scratch(request):\n"
+        "    yield\n"
+        "    if request.node.name == 'test_duration_parsing[hours_and_minutes-shadow]':\n"
+        "        raise RuntimeError('the scratch file is locked')\n",
+        encoding="utf-8",
+    )
+
+    result, rows = run_suite(suite)
+
+    # The call passed, but the row reports the cleanup failure.
+    assert result.returncode == 1
+    assert rows["test_duration_parsing[hours_and_minutes-shadow]"][1:] == (
+        "error",
+        "RuntimeError: the scratch file is locked",
+    )
+
+
 SELF_SKIPPING_TEST = """import pytest
 
 RACK = {

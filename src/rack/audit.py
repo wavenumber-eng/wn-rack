@@ -661,26 +661,51 @@ def known_failure_problems(path: Path) -> list[str]:
 
     Only a strict mark fails the run once the case passes, so a known failure
     cannot outlive its fix; a non-strict mark or an imperative
-    ``pytest.xfail()`` would be recorded as deferred forever.
+    ``pytest.xfail()`` would be recorded as deferred forever. An imperative
+    xfail raised inside a helper the test calls is not visible here.
     """
     tree = ast.parse(path.read_text(encoding="utf-8"))
+    marks, xfails = _pytest_aliases(tree)
     called = {id(node.func): node for node in ast.walk(tree) if isinstance(node, ast.Call)}
     problems = []
     for node in ast.walk(tree):
-        if not (isinstance(node, ast.Attribute) and node.attr == "xfail"):
-            continue
-        call = called.get(id(node))
-        if not _is_mark(node.value):
-            problems.append(f"line {node.lineno}: pytest.xfail() cannot be strict; mark the case")
-        elif call is None or not _is_strict(call):
-            problems.append(f"line {node.lineno}: an xfail mark needs strict=True")
+        problem = _xfail_problem(node, called.get(id(node)), marks, xfails)
+        if problem is not None:
+            problems.append(f"line {getattr(node, 'lineno', 0)}: {problem}")
     return problems
 
 
-def _is_mark(node: ast.expr) -> bool:
-    """``pytest.mark`` or ``mark``: the object an xfail mark hangs off."""
+def _pytest_aliases(tree: ast.AST) -> tuple[set[str], set[str]]:
+    """The local names ``from pytest import mark, xfail`` binds, with any alias."""
+    marks, xfails = {"mark"}, set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "pytest":
+            for alias in node.names:
+                if alias.name == "mark":
+                    marks.add(alias.asname or alias.name)
+                elif alias.name == "xfail":
+                    xfails.add(alias.asname or alias.name)
+    return marks, xfails
+
+
+def _xfail_problem(
+    node: ast.AST, call: ast.Call | None, marks: set[str], xfails: set[str]
+) -> str | None:
+    imperative = "pytest.xfail() cannot be strict; mark the case"
+    if isinstance(node, ast.Name) and node.id in xfails and call is not None:
+        return imperative
+    if not (isinstance(node, ast.Attribute) and node.attr == "xfail"):
+        return None
+    if _is_mark(node.value, marks):
+        return None if call is not None and _is_strict(call) else "an xfail mark needs strict=True"
+    # Only a call is imperative; pytest.xfail.Exception and the like are not.
+    return imperative if call is not None else None
+
+
+def _is_mark(node: ast.expr, marks: set[str]) -> bool:
+    """``pytest.mark`` or a local name for it: the object an xfail mark hangs off."""
     return (isinstance(node, ast.Attribute) and node.attr == "mark") or (
-        isinstance(node, ast.Name) and node.id == "mark"
+        isinstance(node, ast.Name) and node.id in marks
     )
 
 
