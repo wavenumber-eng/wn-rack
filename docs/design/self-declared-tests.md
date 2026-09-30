@@ -2,7 +2,9 @@
 
 Status: draft (2026-09-27), rewritten after the owner chose plain tests with
 native tests per language over Rack-driven adapters, and revised after an
-independent review of the design against the code.
+independent review of the design against the code. The transitional
+`run(case, impl)` form was removed on 2026-09-30; `docs/migrating-to-plain-tests.md`
+converts files written that way.
 
 ## Why
 
@@ -18,7 +20,8 @@ shared files.
 1. **Independent reference.** Every implementation is judged against the same
    independent reference (a captured authority, a specification value, or a
    declared property), never against another implementation. The only
-   cross-implementation comparison is a performance budget.
+   cross-implementation comparison is a performance budget, which the test
+   measures and asserts in its own body.
 2. **Isolation.** Each test lives in its own files. Nothing central grows with
    each test, so work in different strata merges without conflicts.
 3. **Boring tests.** A test is explicit and readable top to bottom. Rack is not
@@ -98,11 +101,12 @@ it is counted as suspended.
 - `resources` lists the files the test reads, relative to the test file.
   Files read through a suite's own helpers (such as a shared corpus outside
   the repository) are not listed.
-- The file has exactly one `test_*` function. A file is the transitional
-  `run(case, impl)` form only when it has a top-level `run` and no `test_*`
-  function, so a helper named `run` does not change the form.
-- The keys the transitional form uses (`cases`, `observation`, `expect`,
-  `operations`, `deferred`) fail in a plain test: it reads its own reference
+- The file has exactly one `test_*` function. A file with only a top-level
+  `run` is the removed `run(case, impl)` form and is rejected with a pointer to
+  the migration guide; a helper named `run` beside a `test_*` function is an
+  ordinary function.
+- The keys of the removed form (`cases`, `observation`, `expect`,
+  `operations`, `deferred`) are rejected: a plain test reads its own reference
   files and does its own comparison.
 - The file's test runs the first implementation listed without a `test`. An
   implementation without a `test` listed after it gets no row and must not be
@@ -144,7 +148,11 @@ the case ids as pytest ids; Rack records each row under the case's `id`.
   `rack run --impl`) selects implementations: only their rows run, planned and
   suspended ones included, and every other row is skipped as not selected. A
   selected planned or suspended row that fails is reported as an expected
-  failure and does not fail the run.
+  failure and does not fail the run. Selection never skips a check's rows,
+  since a check tests no implementation.
+- A known failure is a strict `xfail` on its row, with the tracking issue in
+  the reason. It is recorded as a `deferred` row with that reason, and the
+  strict mark fails the run once the case passes, until the mark is removed.
 - Every row of a file whose header is invalid errors, and so does a row for an
   implementation the header does not declare.
 - For each header entry with a `test` ending in `.rs`, Rack adds one row that
@@ -158,8 +166,7 @@ the case ids as pytest ids; Rack records each row under the case's `id`.
   not fail its neighbors. Under pytest-xdist each row runs its own cargo call.
 - Rows carry a marker named after their implementation, so a suite's existing
   language flags (`-m rust`, skip or only options) keep working.
-- Lanes (`fast`, `full`) select cases only in the transitional form; a plain
-  test chooses its own cases.
+- A plain test chooses its own cases, including any lane-dependent ones.
 - `rack run --jobs N` runs strata that set `parallel = true` with pytest-xdist
   (`--dist loadfile`).
 
@@ -171,9 +178,11 @@ A native row's case is its test file's name.
 
 - `rack parity` counts, per stratum or concern and per implementation, tests
   by status and cases by outcome, plus debt: files without a header, planned
-  work, suspended implementations, failing rows, and audit findings. A native
-  test counts as one case of its implementation. `--format json` follows
-  `rack.parity_report` `a0`.
+  work, suspended implementations, deferred rows (with their xfail reasons),
+  failing rows, and audit findings. A test owes the cases of the vector files
+  its header lists in `resources`; a test that lists none counts its latest
+  rows. A native test counts as one case of its implementation.
+  `--format json` follows `rack.parity_report` `a0`.
 - `rack report` adds a PARITY section: the implementation grid, each test's
   purpose, the code each implementation lists, and case outcomes, and the debt
   view.
@@ -188,7 +197,7 @@ A native row's case is its test file's name.
 - Reference files (`invalid_cases`): a vector file's schema, provenance, and
   unique case ids; any other JSON resource's provenance.
 - `code` entries of implemented and suspended implementations resolve in their
-  named files (`untraced`): Python by parsing the file, Rust by module path,
+  named files (`unresolved_code`): Python by parsing the file, Rust by module path,
   crate, and `fn`, C++ by namespace and definition. Planned entries are not
   checked.
 - Native tests (`native_test`) follow the naming convention derived from the
@@ -230,12 +239,14 @@ works on legacy and mixed suites. A suite converts one file at a time.
 `rack new subtest` still creates a legacy file; a converted test starts from a
 copy of an existing plain test.
 
-## Transitional pieces
+## Removed transitional form
 
 The first version drove tests through `run(case, impl)` with suite-registered
 adapters, comparators, loaders, catalogs, services, an operation registry,
-and `rack trace`. They still work for files already written that way and are
-removed once those files convert.
+typed comparison outcomes, performance budgets, and `rack trace`. All of it
+was removed on 2026-09-30, once the suites that used it had converted; Rack's
+own fixture suite converted the same day. `docs/migrating-to-plain-tests.md`
+shows how to convert a file.
 
 ## Release
 

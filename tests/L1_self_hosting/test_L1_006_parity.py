@@ -39,7 +39,10 @@ def write_rows(suite: Path, file_stem: str, rows: list[tuple[str, str, str, str]
                 "implementation": implementation,
                 "status": "implemented",
                 "outcome": outcome,
-                "detail": "",
+                # A deferred row's detail is its xfail reason.
+                "detail": "#2: shadow truncates fractional amounts"
+                if outcome == "deferred"
+                else "",
                 "differences": [],
             },
         }
@@ -103,7 +106,12 @@ def test_parity_counts_statuses_cases_and_debt(tmp_path: Path) -> None:
     debt = at(report, "debt")
     assert at(debt, "legacy_files") == ["L0_units/test_L0_004_legacy.py"]
     assert at(debt, "deferred") == [
-        {"test": "L0_001", "implementation": "shadow", "case": "fractional_hours", "issue": "#2"}
+        {
+            "test": "L0_001",
+            "implementation": "shadow",
+            "case": "fractional_hours",
+            "issue": "#2: shadow truncates fractional amounts",
+        }
     ]
     assert at(debt, "planned") == [{"test": "L0_001", "implementation": "rust", "note": "#1"}]
     assert at(debt, "suspended") == [
@@ -123,7 +131,10 @@ def test_parity_reports_invalid_declarations_and_groups_by_concern(tmp_path: Pat
     suite = copy_suite(tmp_path)
     test_file = suite / UNITS / "test_L0_003_format_duration.py"
     text = test_file.read_text(encoding="utf-8")
-    test_file.write_text(text.replace('"comparator": "exact"', '"compare": "exact"'), "utf-8")
+    assert '"concerns": ["fixture"],' in text
+    test_file.write_text(
+        text.replace('"concerns": ["fixture"],', '"concerns": ["fixture"], "x": 1,'), "utf-8"
+    )
 
     report = build_parity(suite, suite / "rack_results", ["L0_units"], group_by="concern")
 
@@ -142,7 +153,7 @@ def test_parity_text_and_html(tmp_path: Path) -> None:
     text = format_parity_text(report)
     assert "L0_units: 4 declared, 1 legacy, 0 invalid" in text
     assert "  shadow      3    0    0   0 |      7    0    1     1     0       5" in text
-    assert "  deferred cases: 1 (#2 x1)" in text
+    assert "  deferred cases: 1 (#2: shadow truncates fractional amounts x1)" in text
     assert text.isascii()
 
     html = render_parity_html(report)

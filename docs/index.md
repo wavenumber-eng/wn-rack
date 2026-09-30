@@ -19,8 +19,10 @@ This package has these reference documents:
 - [Runtime Progress Reporting Design](./design/runtime-progress.md)
   Defines the draft JSONL and environment contract for long-running tests.
 - [Self-Declared Tests Design](./design/self-declared-tests.md)
-  Draft: one test per file with a static declaration, shared cases for every
-  implementation, independent expectations, and parity accounting.
+  Draft: one plain test per file with a `RACK` header, native tests per
+  language against the same reference files, and parity accounting.
+- [Migrating to Plain Tests](./migrating-to-plain-tests.md)
+  Converts files written in the removed `run(case, impl)` form.
 - [Audit Report Schema](./contracts/rack_audit_report.a1.schema.json)
 - [Audit Report Schema, previous a0](./contracts/rack_audit_report.a0.schema.json)
 - [Parity Report Schema](./contracts/rack_parity_report.a0.schema.json)

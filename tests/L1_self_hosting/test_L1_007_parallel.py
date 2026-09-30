@@ -89,7 +89,7 @@ def test_rack_run_with_jobs_keeps_row_outcomes() -> None:
         (results / "subtests" / "test_L0_001_parse_duration.json").read_text(encoding="utf-8")
     )
     rows = {test["name"]: test["rack"]["outcome"] for test in subtest["tests"]}
-    assert rows["L0_001[hours_and_minutes-python]"] == "pass"
-    assert rows["L0_001[fractional_hours-shadow]"] == "deferred"
-    assert rows["L0_001[hours_and_minutes-rust]"] == "planned"
+    assert rows["test_duration_parsing[hours_and_minutes-python]"] == "pass"
+    assert rows["test_duration_parsing[fractional_hours-shadow]"] == "deferred"
+    assert rows["test_duration_parsing[hours_and_minutes-rust]"] == "planned"
     assert "created: 2/2 workers" in run.stdout

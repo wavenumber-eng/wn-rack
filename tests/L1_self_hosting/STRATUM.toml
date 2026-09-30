@@ -28,42 +28,38 @@ module = "rack.cli"
 id = "L1_002"
 file = "test_L1_002_declarations.py"
 name = "Self-Declared Test Declarations"
-description = "Read and validate RACK declarations, entry points, statuses, deferrals, and JSON vector files statically"
+description = "Read and validate RACK declarations, entry points, statuses, code entries, and JSON vector files statically"
 concerns = ["self_hosting", "declarations"]
 test_case_type = "synthetic"
 
 [[subtests.code_under_test]]
 module = "rack.declarations"
-functions = ["read_declaration", "declaration_problems", "load_vector_file", "validate_deferrals", "is_self_declared", "decode_value"]
+functions = ["read_declaration", "declaration_problems", "load_vector_file", "is_self_declared", "decode_value"]
 
 [[subtests.code_under_test]]
 module = "rack.code_refs"
-functions = ["check_code_ref", "declaration_code_problems", "project_root"]
-
-[[subtests]]
-id = "L1_003"
-file = "test_L1_003_outcomes.py"
-name = "Outcomes And Exact Comparison"
-description = "Typed differences with stable paths, exact deferral matching, canonical digests, and report serialization"
-concerns = ["self_hosting", "outcomes"]
-test_case_type = "synthetic"
-
-[subtests.code_under_test]
-module = "rack.outcomes"
-functions = ["compare_exact", "classify", "canonical_digest", "difference_to_dict"]
+functions = ["check_code_ref", "locate_code_ref", "project_root"]
 
 [[subtests]]
 id = "L1_004"
 file = "test_L1_004_plugin.py"
 name = "Self-Declared Test Plugin"
-description = "Expand self-declared files into case-by-implementation rows with lanes, selection, deferrals, checks, authority loaders, and budgets"
-concerns = ["self_hosting", "declarations", "outcomes"]
+description = "Apply RACK statuses to plain test rows: selection, known failures as strict xfails, checks, native rows, and invalid headers"
+concerns = ["self_hosting", "declarations"]
 test_case_type = "synthetic"
 test_cases = "../fixtures/declared_suite"
 
-[subtests.code_under_test]
+[[subtests.code_under_test]]
 module = "rack.plugin"
-classes = ["RackFile", "RackItem", "RackCase", "Suite"]
+functions = ["pytest_collection_modifyitems", "pytest_runtest_makereport", "pytest_pycollect_makemodule"]
+
+[[subtests.code_under_test]]
+module = "rack.native_tests"
+functions = ["cargo_command", "native_items"]
+
+[[subtests.code_under_test]]
+module = "rack.status_rows"
+functions = ["declared_row", "skip_reason", "settle", "record"]
 
 [[subtests]]
 id = "L1_005"
@@ -131,31 +127,3 @@ functions = ["worker_progress_file"]
 module = "rack.progress_cli"
 classes = ["ProgressTailer"]
 
-[[subtests]]
-id = "L1_008"
-file = "test_L1_008_tracing.py"
-name = "Operation Tracing"
-description = "Trace self-declared tests through the operation registry to dispatch lines, handlers, and library code, and print the chain"
-concerns = ["self_hosting", "declarations", "tracing"]
-test_case_type = "synthetic"
-test_cases = "../fixtures/declared_suite"
-
-[[subtests.code_under_test]]
-module = "rack.native_tests"
-functions = ["cargo_command", "native_items"]
-
-[[subtests.code_under_test]]
-module = "rack.status_rows"
-functions = ["declared_row", "skip_reason", "settle", "record"]
-
-[[subtests.code_under_test]]
-module = "rack.tracing"
-functions = ["load_registry", "operations_constructed", "trace_declaration", "trace_problems", "declared_calls"]
-
-[[subtests.code_under_test]]
-module = "rack.trace_cli"
-functions = ["cmd_trace", "format_trace", "trace_to_json"]
-
-[[subtests.code_under_test]]
-module = "rack.code_refs"
-functions = ["locate_code_ref", "unreferenced_calls", "find_dispatch_line"]

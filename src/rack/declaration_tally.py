@@ -27,7 +27,7 @@ IGNORED_DIR_NAMES = frozenset({"__pycache__", "rack_results", ".pytest_cache"})
 SUITE_REQUIREMENTS = {
     "invalid_cases": "vectors",
     "invalid_resource": "resource_files",
-    "untraced": "trace",
+    "unresolved_code": "code",
     "native_test": "native_tests",
     "duplicate_test_id": "unique_id",
     "test_module_import": "no_test_imports",

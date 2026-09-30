@@ -65,11 +65,7 @@ def test_audit_tallies_declared_files_requirements_and_outliers(tmp_path: Path) 
     nested = suite / UNITS / "extra" / "test_L0_098_nested.py"
     nested.parent.mkdir()
     nested.write_text("def test_nested():\n    pass\n", encoding="utf-8")
-    replace_in(
-        suite / TEST_L0_001,
-        '"operations": ["ParseDuration"]',
-        '"operations": ["ParseDuration", "FormatDuration"]',
-    )
+    unresolve_code(suite)
     replace_in(
         suite / UNITS / "test_L0_003_format_duration.py",
         '"checks": "Formatting seconds matches the captured reference text."',
@@ -94,7 +90,7 @@ def test_audit_tallies_declared_files_requirements_and_outliers(tmp_path: Path) 
     failing = {name: files for name, files in tally.requirements if files}
     assert failing == {
         "purpose": ("L0_units/test_L0_003_format_duration.py",),
-        "trace": ("L0_units/test_L0_001_parse_duration.py",),
+        "code": ("L0_units/test_L0_001_parse_duration.py",),
     }
 
 
@@ -120,18 +116,23 @@ def add_manifest_entry(suite: Path) -> None:
 
 
 def break_declaration(suite: Path) -> None:
-    replace_in(suite / TEST_L0_001, '"comparator": "exact"', '"compare": "exact"')
+    replace_in(suite / TEST_L0_001, '"concerns": ["fixture"],', '"concerns": "fixture", "x": 1,')
 
 
 def break_vectors(suite: Path) -> None:
     replace_in(
-        suite / UNITS / "vectors" / "L0_001_parse_duration.json", '"fractional_hours"', '"x"'
+        suite / UNITS / "vectors" / "L0_001_parse_duration.json",
+        '"kind": "specification"',
+        '"kind": "python_output"',
     )
 
 
-def break_trace(suite: Path) -> None:
+def unresolve_code(suite: Path) -> None:
     replace_in(
-        suite / TEST_L0_001, '"operations": ["ParseDuration"]', '"operations": ["FormatDuration"]'
+        suite / TEST_L0_001,
+        '"python": {"status": "implemented"},',
+        '"python": {"status": "implemented", "code": [{"file": "suite_support/durations.py", '
+        '"module": "suite_support.durations", "function": "gone"}]},',
     )
 
 
@@ -148,8 +149,8 @@ def helper_imports_test(suite: Path) -> None:
 def declared_imports_test(suite: Path) -> None:
     replace_in(
         suite / TEST_L0_001,
-        "\n\ndef run(case, impl):",
-        "\n\nimport test_L0_004_legacy as _legacy\n\n\ndef run(case, impl):",
+        "\n\ndef unported(text):",
+        "\n\nimport test_L0_004_legacy as _legacy\n\n\ndef unported(text):",
     )
 
 
@@ -159,7 +160,7 @@ def declared_imports_test(suite: Path) -> None:
         (add_manifest_entry, ["declared_file_in_manifest"]),
         (break_declaration, ["invalid_declaration"]),
         (break_vectors, ["invalid_cases"]),
-        (break_trace, ["untraced", "untraced"]),
+        (unresolve_code, ["unresolved_code"]),
         (duplicate_id, ["duplicate_test_id"]),
         (helper_imports_test, ["test_module_import"]),
         (declared_imports_test, ["test_module_import"]),
@@ -187,9 +188,12 @@ def test_cli_commands_read_declared_files() -> None:
         (results / "subtests" / "test_L0_001_parse_duration.json").read_text(encoding="utf-8")
     )
     rows = {test["name"]: test["rack"] for test in subtest["tests"]}
-    assert rows["L0_001[long_form-shadow]"]["outcome"] == "pass"
-    assert rows["L0_001[fractional_hours-shadow]"]["outcome"] == "deferred"
-    assert rows["L0_001[fractional_hours-python]"]["detail"] == "implementation not selected"
+    assert rows["test_duration_parsing[long_form-shadow]"]["outcome"] == "pass"
+    assert rows["test_duration_parsing[fractional_hours-shadow]"]["outcome"] == "deferred"
+    assert (
+        rows["test_duration_parsing[fractional_hours-python]"]["detail"]
+        == "skipped: implementation not selected"
+    )
     assert subtest["status"] == "passed"
 
     listed = rack("list", "L0_units", "--concern", "fixture")
@@ -337,4 +341,4 @@ def test_audit_resolves_code_listed_in_the_header(tmp_path: Path) -> None:
     assert audit_codes(suite) == []
 
     replace_in(plain, '"function": "parse_duration"', '"function": "parse_hours"')
-    assert audit_codes(suite) == ["untraced"]
+    assert audit_codes(suite) == ["unresolved_code"]

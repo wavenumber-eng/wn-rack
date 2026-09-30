@@ -1,7 +1,7 @@
 [rack]
 name = "Declared Fixture Suite"
 version = "1.0"
-description = "Self-declared tests run against two fixture implementations"
+description = "Self-declared plain tests for two fixture implementations"
 default_lane = "fast"
 # Declared code files are relative to the suite itself.
 project_root = "."
@@ -12,22 +12,3 @@ default_enabled = ["L0_units"]
 
 [lanes]
 order = ["fast", "full"]
-
-[implementations.python]
-adapter = "suite_support.adapters:ReferenceAdapter"
-
-[implementations.shadow]
-adapter = "suite_support.adapters:ShadowAdapter"
-
-[operations]
-registry = "suite_support/operations.toml"
-
-[catalogs]
-"fixture.vector_files" = "suite_support.catalogs:vector_files"
-
-[loaders]
-"fixture.reference" = "suite_support.loaders:read_reference"
-"fixture.same_seconds" = "suite_support.loaders:same_seconds"
-
-[services]
-"vector_reader" = "suite_support.services:VectorReader"

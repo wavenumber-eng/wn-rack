@@ -2,9 +2,8 @@
 
 A self-declared test file carries one top-level ``RACK = {...}`` literal,
 including the test's required purpose. It is an ordinary pytest test with one
-``test_*`` function, or, in the transitional adapter form, a single
-``run(case, impl)`` entry point. Rack reads all of it with ``ast`` so listing,
-auditing, and accounting never import the test module.
+``test_*`` function. Rack reads the header with ``ast`` so listing, auditing,
+and accounting never import the test module.
 """
 
 from __future__ import annotations
@@ -16,26 +15,17 @@ import json
 import re
 import tomllib
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
 ID_PATTERN = re.compile(r"^L\d+_\d{3}[a-z]?$")
 STATUSES = ("implemented", "planned", "suspended", "not_applicable")
-EXPECT_SOURCES = ("authority", "contract", "property", "budget")
-DIFFERENCE_KINDS = (
-    "missing",
-    "extra",
-    "type",
-    "value",
-    "length",
-    "nonfinite",
-    "unsupported_operation",
-)
 PROVENANCE_KINDS = ("authority", "specification", "generated")
 VECTOR_SCHEMA = "rack.cases.a0"
-# Keys only a run(case, impl) file uses; a plain pytest test does its own work.
-ADAPTER_ONLY_KEYS = ("cases", "observation", "expect", "operations", "deferred")
+# Keys of the removed run(case, impl) form. A plain pytest test reads its own
+# reference files and compares values itself; see the migration guide.
+REMOVED_KEYS = ("cases", "observation", "expect", "operations", "deferred")
 # Every rule a declaration must meet, in the order `rack audit` reports them.
 REQUIREMENTS = (
     "rack_literal",
@@ -45,11 +35,7 @@ REQUIREMENTS = (
     "kind",
     "entry_point",
     "implementations",
-    "operations",
-    "expect",
-    "cases_ref",
     "resources",
-    "deferrals",
 )
 
 _KNOWN_KEYS = frozenset(
@@ -58,14 +44,9 @@ _KNOWN_KEYS = frozenset(
         "title",
         "kind",
         "concerns",
-        "cases",
-        "observation",
-        "expect",
         "implementations",
-        "operations",
         "purpose",
         "resources",
-        "deferred",
         "objectives",
         "approach",
         "test_case_type",
@@ -81,7 +62,7 @@ class DeclarationError(ValueError):
 
 @dataclass(frozen=True)
 class CodeRef:
-    """A function and the file that defines it, as the operation registry names it.
+    """A function and the file that defines it, as a RACK code entry names it.
 
     ``file`` is relative to the suite's project root. ``function`` is a plain
     name or ``Type.method`` (Python) / ``Type::method`` (Rust, C++).
@@ -106,14 +87,6 @@ class ImplementationStatus:
 
 
 @dataclass(frozen=True)
-class Difference:
-    path: tuple[object, ...]
-    kind: str
-    expected: object = None
-    actual: object = None
-
-
-@dataclass(frozen=True)
 class TestDeclaration:
     path: Path
     id: str
@@ -123,35 +96,15 @@ class TestDeclaration:
     because: str
     raw: Mapping[str, object]
     implementations: tuple[ImplementationStatus, ...] = ()
-    # "pytest": the file is an ordinary pytest test (one test_* function) and
-    # Rack only reads its header. "adapter": run(case, impl) driven by Rack.
-    form: str = "adapter"
-    deferred: Mapping[str, Mapping[str, tuple[Difference, ...]]] = field(default_factory=dict)
-    deferred_issues: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
 
     @property
     def concerns(self) -> tuple[str, ...]:
         return tuple(str(value) for value in _as_list(self.raw.get("concerns", [])))
 
     @property
-    def cases(self) -> Mapping[str, object]:
-        value = self.raw.get("cases", {})
-        return value if isinstance(value, Mapping) else {}
-
-    @property
     def resources(self) -> tuple[str, ...]:
         """Files the test reads (vectors, captures, corpus paths), as written in RACK."""
         return tuple(str(value) for value in _as_list(self.raw.get("resources", [])))
-
-    @property
-    def operations(self) -> tuple[str, ...]:
-        """The registry operations ``run`` sends through ``impl.batch``."""
-        return tuple(str(value) for value in _as_list(self.raw.get("operations", [])))
-
-    @property
-    def expect(self) -> Mapping[str, object]:
-        value = self.raw.get("expect", {})
-        return value if isinstance(value, Mapping) else {}
 
     @property
     def in_file(self) -> tuple[ImplementationStatus, ...]:
@@ -190,7 +143,6 @@ class Case:
 @dataclass(frozen=True)
 class VectorSet:
     path: Path
-    observation: str
     provenance: Mapping[str, object]
     cases: tuple[Case, ...]
 
@@ -242,13 +194,8 @@ def manifest_entries(directory: Path) -> dict[str, dict[str, object]]:
 
 def manifest_entry(declaration: TestDeclaration) -> dict[str, object]:
     """The subtest entry Rack reports for a self-declared file."""
-    # Imported here: tracing builds on declarations.
-    from rack.tracing import declared_calls
-
     raw = declaration.raw
-    cases = declaration.cases
-    # Code listed in the header wins; otherwise the adapter form's registry trace.
-    calls = listed_code(declaration) or declared_calls(declaration)
+    calls = listed_code(declaration)
     return {
         "id": declaration.id,
         "name": declaration.title or declaration.path.name,
@@ -261,14 +208,11 @@ def manifest_entry(declaration: TestDeclaration) -> dict[str, object]:
         "bug_reference": None,
         "progress": raw.get("progress"),
         "runtime_profile": raw.get("runtime_profile", ""),
-        "test_cases": str(cases.get("file", "")),
+        "test_cases": "",
         "test_case_type": raw.get("test_case_type", ""),
         "rack": {
             "kind": declaration.kind,
             "purpose": {"checks": declaration.checks, "because": declaration.because},
-            "operations": list(declaration.operations),
-            "cases": dict(cases),
-            "expect_source": str(declaration.expect.get("source", "")),
             "implementations": {
                 entry.name: {
                     "status": entry.status,
@@ -280,9 +224,6 @@ def manifest_entry(declaration: TestDeclaration) -> dict[str, object]:
                     ],
                 }
                 for entry in declaration.implementations
-            },
-            "deferred": {
-                name: dict(per_case) for name, per_case in declaration.deferred_issues.items()
             },
         },
     }
@@ -342,22 +283,15 @@ def read_declaration(path: Path) -> TestDeclaration:
         raise DeclarationError(next(iter(problems.values())))
     raw = cast(dict[str, object], results["raw"])
     checks, because = cast(tuple[str, str], results["purpose"])
-    deferred, issues = cast(
-        tuple[dict[str, dict[str, tuple[Difference, ...]]], dict[str, dict[str, str]]],
-        results["deferrals"],
-    )
     return TestDeclaration(
         path=path,
         id=cast(str, results["id"]),
         title=str(raw.get("title", "")),
         kind=cast(str, results["kind"]),
-        form=cast(str, results["entry_point"]),
         checks=checks,
         because=because,
         raw=raw,
         implementations=cast(tuple[ImplementationStatus, ...], results["implementations"]),
-        deferred=deferred,
-        deferred_issues=issues,
     )
 
 
@@ -365,7 +299,7 @@ def declaration_problems(path: Path) -> dict[str, str]:
     """Every requirement in ``REQUIREMENTS`` the file fails, keyed by requirement.
 
     Each requirement is checked on its own, so one mistake does not hide the
-    others. Deferrals are checked only when the implementations parse.
+    others.
     """
     return _evaluate(path)[1]
 
@@ -376,17 +310,13 @@ def _evaluate(path: Path) -> tuple[dict[str, object], dict[str, str]]:
     except DeclarationError as error:
         return {}, {"rack_literal": str(error)}
     kind = str(raw.get("kind", "test"))
-    pytest_form = declaration_form(tree) == "pytest"
     steps: list[tuple[str, Callable[[], object]]] = [
-        ("keys", lambda: _check_keys(path, raw, pytest_form)),
+        ("keys", lambda: _check_keys(path, raw)),
         ("purpose", lambda: _parse_purpose(path, raw)),
         ("id", lambda: _check_id(path, raw)),
         ("kind", lambda: _check_kind(path, kind)),
         ("entry_point", lambda: _check_entry_point(path, tree, raw)),
         ("implementations", lambda: _parse_implementations(path, raw, kind)),
-        ("operations", lambda: _check_operations(path, raw, kind, pytest_form)),
-        ("expect", lambda: _check_expect(path, raw, pytest_form)),
-        ("cases_ref", lambda: _check_cases_ref(path, raw, pytest_form)),
         ("resources", lambda: _check_resources(path, raw)),
     ]
     results: dict[str, object] = {"raw": raw}
@@ -396,12 +326,6 @@ def _evaluate(path: Path) -> tuple[dict[str, object], dict[str, str]]:
             results[name] = step()
         except DeclarationError as error:
             problems[name] = str(error)
-    if "implementations" in results:
-        implementations = cast(tuple[ImplementationStatus, ...], results["implementations"])
-        try:
-            results["deferrals"] = _parse_deferred(path, raw, implementations)
-        except DeclarationError as error:
-            problems["deferrals"] = str(error)
     return results, problems
 
 
@@ -447,23 +371,9 @@ def load_vector_file(path: Path) -> VectorSet:
         raise DeclarationError(f"{path.name}: case ids must be unique")
     return VectorSet(
         path=path,
-        observation=str(payload.get("observation", "")),
         provenance=provenance if isinstance(provenance, dict) else {},
         cases=cases,
     )
-
-
-def validate_deferrals(declaration: TestDeclaration, case_ids: tuple[str, ...]) -> None:
-    """Fail when a deferral names a case that is not in the complete case list."""
-    known = set(case_ids)
-    if not known:
-        raise DeclarationError(f"{declaration.path.name}: the case list is empty")
-    for implementation, per_case in declaration.deferred.items():
-        for case_id in per_case:
-            if case_id not in known:
-                raise DeclarationError(
-                    f"{declaration.path.name}: deferral for unknown case {case_id!r} ({implementation})"
-                )
 
 
 def decode_value(value: object) -> object:
@@ -522,16 +432,16 @@ def _parse_purpose(path: Path, raw: Mapping[str, object]) -> tuple[str, str]:
     return str(purpose["checks"]).strip(), str(purpose["because"]).strip()
 
 
-def _check_keys(path: Path, raw: Mapping[str, object], pytest_form: bool) -> None:
+def _check_keys(path: Path, raw: Mapping[str, object]) -> None:
+    removed = sorted(set(raw) & set(REMOVED_KEYS))
+    if removed:
+        raise DeclarationError(
+            f"{path.name}: {removed} belonged to the removed run(case, impl) form; "
+            "a pytest test reads its own reference files"
+        )
     unknown = sorted(set(raw) - _KNOWN_KEYS)
     if unknown:
         raise DeclarationError(f"{path.name}: unknown RACK keys {unknown}")
-    adapter_only = sorted(set(raw) & set(ADAPTER_ONLY_KEYS)) if pytest_form else []
-    if adapter_only:
-        raise DeclarationError(
-            f"{path.name}: {adapter_only} belong only to run(case, impl) tests; "
-            "a pytest test reads its own reference files"
-        )
 
 
 def _check_id(path: Path, raw: Mapping[str, object]) -> str:
@@ -543,41 +453,22 @@ def _check_id(path: Path, raw: Mapping[str, object]) -> str:
     return test_id
 
 
-def declaration_form(tree: ast.Module) -> str:
-    """``adapter`` for a file with a top-level ``run`` and no ``test_*``, else ``pytest``."""
-    names = {
-        node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    }
-    has_test = any(name.startswith("test_") for name in names)
-    return "adapter" if "run" in names and not has_test else "pytest"
-
-
-def source_form(path: Path) -> str:
-    """The form of a test file from its functions, even when its header is invalid."""
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    except (OSError, SyntaxError, UnicodeDecodeError):
-        return "pytest"
-    return declaration_form(tree)
-
-
-def _check_entry_point(path: Path, tree: ast.Module, raw: Mapping[str, object]) -> str:
-    if declaration_form(tree) == "pytest":
-        _check_pytest_entry_point(path, tree)
-        if raw.get("kind", "test") == "test":
-            _check_implementations_table(path, tree, raw)
-        return "pytest"
-    _check_adapter_entry_point(path, tree)
-    return "adapter"
+def _check_entry_point(path: Path, tree: ast.Module, raw: Mapping[str, object]) -> None:
+    _check_pytest_entry_point(path, tree)
+    if raw.get("kind", "test") == "test":
+        _check_implementations_table(path, tree, raw)
 
 
 def _check_pytest_entry_point(path: Path, tree: ast.Module) -> None:
-    tests = [
-        node.name
-        for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name.startswith("test_")
+    functions = [
+        node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     ]
+    tests = [name for name in functions if name.startswith("test_")]
+    if not tests and "run" in functions:
+        raise DeclarationError(
+            f"{path.name}: the run(case, impl) form was removed; write one test_* "
+            "function that reads its reference files (see the migration guide)"
+        )
     if len(tests) != 1:
         raise DeclarationError(
             f"{path.name}: a test file has exactly one test_* function (found {tests})"
@@ -677,37 +568,6 @@ def _in_file_entries(implementations: object) -> list[tuple[str, str]]:
     ]
 
 
-def _check_adapter_entry_point(path: Path, tree: ast.Module) -> None:
-    run = _single_run_function(path, tree)
-    names = [argument.arg for argument in run.args.args]
-    if names != ["case", "impl"]:
-        raise DeclarationError(f"{path.name}: run must take exactly (case, impl)")
-    if any(_is_impl_name(node) for node in ast.walk(run)):
-        raise DeclarationError(f"{path.name}: run must not branch on the implementation")
-
-
-def _single_run_function(path: Path, tree: ast.Module) -> ast.FunctionDef | ast.AsyncFunctionDef:
-    functions = [
-        node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    ]
-    tests = [node.name for node in functions if node.name.startswith("test_")]
-    if tests:
-        raise DeclarationError(f"{path.name}: test_* functions are not allowed ({tests})")
-    public = [node for node in functions if not node.name.startswith("_")]
-    if [node.name for node in public] != ["run"]:
-        raise DeclarationError(f"{path.name}: the only public function must be run(case, impl)")
-    return public[0]
-
-
-def _is_impl_name(node: ast.AST) -> bool:
-    return (
-        isinstance(node, ast.Attribute)
-        and node.attr == "name"
-        and isinstance(node.value, ast.Name)
-        and node.value.id == "impl"
-    )
-
-
 def _parse_implementations(
     path: Path, raw: Mapping[str, object], kind: str
 ) -> tuple[ImplementationStatus, ...]:
@@ -768,52 +628,8 @@ def _test_path(path: Path, name: str, entry: Mapping[str, object]) -> str:
     return test
 
 
-def _check_operations(path: Path, raw: Mapping[str, object], kind: str, pytest_form: bool) -> None:
-    # A pytest test with operations fails the keys rule instead.
-    if pytest_form:
-        return
-    value = raw.get("operations")
-    if kind == "check":
-        if value is not None:
-            raise DeclarationError(f"{path.name}: operations belong only to run(case, impl) tests")
-        return
-    if (
-        not isinstance(value, list)
-        or not value
-        or not all(isinstance(item, str) and item.strip() for item in value)
-        or len(set(value)) != len(value)
-    ):
-        raise DeclarationError(
-            f"{path.name}: operations must list the registry operations run sends"
-        )
-
-
 def _text(value: object) -> str:
     return value if isinstance(value, str) else ""
-
-
-def _check_expect(path: Path, raw: Mapping[str, object], pytest_form: bool) -> None:
-    # A pytest test does its own comparison; an expect key fails the keys rule.
-    if raw.get("kind", "test") == "check" or pytest_form:
-        return
-    expect = raw.get("expect")
-    if not isinstance(expect, dict) or expect.get("source") not in EXPECT_SOURCES:
-        raise DeclarationError(f"{path.name}: expect.source must be one of {EXPECT_SOURCES}")
-    source = expect["source"]
-    if source == "budget":
-        _check_budget(path, expect)
-        return
-    if not isinstance(expect.get("comparator"), str):
-        raise DeclarationError(f"{path.name}: expect.comparator is required")
-    if source == "authority" and not isinstance(expect.get("loader"), str):
-        raise DeclarationError(f"{path.name}: an authority expectation needs expect.loader")
-
-
-def _check_budget(path: Path, expect: Mapping[str, object]) -> None:
-    if not isinstance(expect.get("metric"), str) or not ("max" in expect or "max_ratio" in expect):
-        raise DeclarationError(f"{path.name}: a budget needs a metric and max or max_ratio")
-    if "max_ratio" in expect and not isinstance(expect.get("relative_to"), str):
-        raise DeclarationError(f"{path.name}: max_ratio needs relative_to")
 
 
 def _check_resources(path: Path, raw: Mapping[str, object]) -> None:
@@ -822,69 +638,6 @@ def _check_resources(path: Path, raw: Mapping[str, object]) -> None:
         isinstance(item, str) and item.strip() for item in value
     ):
         raise DeclarationError(f"{path.name}: resources must be a list of paths")
-
-
-def _check_cases_ref(path: Path, raw: Mapping[str, object], pytest_form: bool) -> None:
-    if pytest_form:
-        return
-    cases = raw.get("cases")
-    if (
-        not isinstance(cases, dict)
-        or len(cases) != 1
-        or not (isinstance(cases.get("file"), str) or isinstance(cases.get("catalog"), str))
-    ):
-        raise DeclarationError(f"{path.name}: cases must be {{'file': ...}} or {{'catalog': ...}}")
-
-
-def _parse_deferred(
-    path: Path,
-    raw: Mapping[str, object],
-    implementations: tuple[ImplementationStatus, ...],
-) -> tuple[dict[str, dict[str, tuple[Difference, ...]]], dict[str, dict[str, str]]]:
-    value = raw.get("deferred", {})
-    if not isinstance(value, dict):
-        raise DeclarationError(f"{path.name}: deferred must be a dict")
-    implemented = {entry.name for entry in implementations if entry.status == "implemented"}
-    deferred: dict[str, dict[str, tuple[Difference, ...]]] = {}
-    issues: dict[str, dict[str, str]] = {}
-    for name, per_case in value.items():
-        if name not in implemented:
-            raise DeclarationError(f"{path.name}: deferrals apply only to implemented {name!r}")
-        if not isinstance(per_case, dict) or not per_case:
-            raise DeclarationError(f"{path.name}: deferred[{name!r}] must map case ids")
-        deferred[name] = {}
-        issues[name] = {}
-        for case_id, entry in per_case.items():
-            differences, issue = _parse_deferral(path, name, str(case_id), entry)
-            deferred[name][str(case_id)] = differences
-            issues[name][str(case_id)] = issue
-    return deferred, issues
-
-
-def _parse_deferral(
-    path: Path, name: str, case_id: str, entry: object
-) -> tuple[tuple[Difference, ...], str]:
-    if not isinstance(entry, dict):
-        raise DeclarationError(f"{path.name}: deferral {name}/{case_id} must be a dict")
-    issue = entry.get("issue")
-    items = entry.get("differences")
-    if not isinstance(issue, str) or not issue or not isinstance(items, list) or not items:
-        raise DeclarationError(
-            f"{path.name}: deferral {name}/{case_id} needs issue and differences"
-        )
-    return tuple(_parse_difference(path, item) for item in items), issue
-
-
-def _parse_difference(path: Path, item: object) -> Difference:
-    if (
-        not isinstance(item, dict)
-        or not isinstance(item.get("path"), list)
-        or item.get("kind") not in DIFFERENCE_KINDS
-    ):
-        raise DeclarationError(f"{path.name}: a difference needs a path list and a known kind")
-    return Difference(
-        tuple(item["path"]), str(item["kind"]), item.get("expected"), item.get("actual")
-    )
 
 
 def check_provenance(path: Path, provenance: object) -> None:

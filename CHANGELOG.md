@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Remove the transitional `run(case, impl)` form: suite-registered adapters,
+  comparators, loaders, catalogs, and services, the operation registry,
+  `rack trace`, `rack.tracing`, `rack.outcomes`, typed differences, and
+  performance budgets. A self-declared test is a plain pytest file with a
+  `RACK` header; a file or header still using the old form fails with a
+  message pointing to `docs/migrating-to-plain-tests.md`. The `operations`,
+  `expect`, `cases_ref`, and `deferrals` audit requirements go, and the
+  listed-code check reports `unresolved_code` (tally row `code`) in place of
+  `untraced` (`trace`).
+- A strict `xfail` on a plain row is recorded as a `deferred` row with its
+  reason, and `rack parity` lists it as a deferred case. `rack parity` counts
+  a plain test's cases from the vector files its header lists in `resources`.
+- Implementation selection never skips a check's rows.
+- Rack puts a suite's root on `sys.path` before it imports a self-declared
+  module, so plain tests can import suite code.
+
 - A header entry may name a native test (`"test": "<path>.rs"`); Rack runs it
   as one row, by status, and records pass or fail with cargo's output. Rust
   tests of one crate run in a single `cargo test --no-fail-fast` call per run,

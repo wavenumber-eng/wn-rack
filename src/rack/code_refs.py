@@ -6,7 +6,7 @@ that file is, and a function the file defines. A check reads only that file
 The file extension selects the checker, and an extension without one fails.
 For C++ the module is the namespace the file opens.
 
-Every check reports the line of the definition, so a trace can point at it.
+Every check reports the line of the definition.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import ast
 import functools
 import re
 import tomllib
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -60,56 +60,8 @@ def check_code_ref(root: Path, ref: CodeRef) -> str | None:
     return locate_code_ref(root, ref).problem
 
 
-def unreferenced_calls(root: Path, handler: CodeRef, calls: Sequence[CodeRef]) -> list[CodeRef]:
-    """Calls the handler never names, directly or through helpers in its own file.
-
-    A call counts as referenced when its last name segment (the function, the
-    method, or the class) appears in the handler's body or in the body of a
-    same-file function the handler reaches.
-    """
-    mentions = _MENTIONS.get((root / handler.file).suffix)
-    if mentions is None:
-        return list(calls)
-    named = mentions(root / handler.file, _last_segment(handler.function))
-    return [call for call in calls if _last_segment(call.function) not in named]
-
-
 # A function definition that merely mentions a name is not a dispatch line.
 _DEFINITION = re.compile(r"^\s*(?:async\s+def|def|(?:pub(?:\([^)]*\))?\s+)?fn)\s")
-
-
-def find_dispatch_line(root: Path, file: str, words: Iterable[str], after: str = "") -> int:
-    """The first non-definition line of ``file`` containing every word, or 0.
-
-    With ``after``, the search starts below the first line containing that text,
-    for files that hold several dispatch tables.
-    """
-    path = root / file
-    if not path.is_file():
-        return 0
-    patterns = [re.compile(rf"(?<![\w]){re.escape(word)}(?![\w])") for word in words]
-    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    start = _start_after(lines, after)
-    if start is None:
-        return 0
-    for number, line in enumerate(lines[start:], start=start + 1):
-        if _maps(line, patterns):
-            return number
-    return 0
-
-
-def _start_after(lines: Sequence[str], after: str) -> int | None:
-    if not after:
-        return 0
-    return next((index + 1 for index, line in enumerate(lines) if after in line), None)
-
-
-def _maps(line: str, patterns: Sequence[re.Pattern[str]]) -> bool:
-    return not _DEFINITION.match(line) and all(pattern.search(line) for pattern in patterns)
-
-
-def _last_segment(function: str) -> str:
-    return re.split(r"::|\.", function)[-1]
 
 
 def _check_python(path: Path, ref: CodeRef) -> Located:
@@ -141,28 +93,6 @@ def _defines(node: ast.stmt, name: str) -> bool:
         isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
         and node.name == name
     )
-
-
-def _python_mentions(path: Path, handler: str) -> set[str]:
-    tree = _python_tree(*_stamp(path))
-    if tree is None:
-        return set()
-    functions = {
-        node.name: node
-        for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    }
-    return _closure(handler, functions, _python_names)
-
-
-def _python_names(node: ast.AST) -> set[str]:
-    names: set[str] = set()
-    for child in ast.walk(node):
-        if isinstance(child, ast.Name):
-            names.add(child.id)
-        elif isinstance(child, ast.Attribute):
-            names.add(child.attr)
-    return names
 
 
 def _check_rust(path: Path, ref: CodeRef) -> Located:
@@ -200,51 +130,6 @@ def _rust_module_problem(path: Path, ref: CodeRef, crate: str, modules: list[str
     if segments != modules:
         return f"{ref.file} is not module {ref.module}"
     return None
-
-
-def _rust_mentions(path: Path, handler: str) -> set[str]:
-    source = _rust_source(*_stamp(path))
-    return _closure(handler, _rust_function_bodies(source), _rust_names)
-
-
-def _rust_names(body: str) -> set[str]:
-    return set(re.findall(r"\b\w+\b", body))
-
-
-def _rust_function_bodies(source: str) -> dict[str, str]:
-    bodies: dict[str, str] = {}
-    for match in re.finditer(r"\bfn\s+(\w+)", source):
-        opening = source.find("{", match.end())
-        if opening != -1 and match.group(1) not in bodies:
-            bodies[match.group(1)] = _braced(source, opening)
-    return bodies
-
-
-def _braced(source: str, opening: int) -> str:
-    depth = 0
-    for index in range(opening, len(source)):
-        depth += {"{": 1, "}": -1}.get(source[index], 0)
-        if depth == 0:
-            return source[opening : index + 1]
-    return source[opening:]
-
-
-def _closure[T](
-    handler: str, functions: Mapping[str, T], names_of: Callable[[T], set[str]]
-) -> set[str]:
-    """Every name the handler reaches, following calls to functions in the same file."""
-    if handler not in functions:
-        return set()
-    seen = {handler}
-    pending = [handler]
-    named: set[str] = set()
-    while pending:
-        names = names_of(functions[pending.pop()])
-        named |= names
-        for name in names & functions.keys() - seen:
-            seen.add(name)
-            pending.append(name)
-    return named
 
 
 def _check_cpp(path: Path, ref: CodeRef) -> Located:
@@ -329,9 +214,4 @@ _CHECKERS: dict[str, Callable[[Path, CodeRef], Located]] = {
     ".cc": _check_cpp,
     ".h": _check_cpp,
     ".hpp": _check_cpp,
-}
-
-_MENTIONS: dict[str, Callable[[Path, str], set[str]]] = {
-    ".py": _python_mentions,
-    ".rs": _rust_mentions,
 }

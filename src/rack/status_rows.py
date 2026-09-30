@@ -23,7 +23,6 @@ from rack.declarations import (
     TestDeclaration,
     is_self_declared,
     load_declaration,
-    source_form,
 )
 
 ROW_KEY = pytest.StashKey[ImplementationStatus]()
@@ -70,6 +69,9 @@ def block_reason(declaration: TestDeclaration | str, name: str) -> str | None:
 
 
 def skip_reason(status: ImplementationStatus, selected: set[str] | None) -> str | None:
+    # A check tests no implementation, so implementation selection never skips it.
+    if status.name == CHECK:
+        return None
     if selected is not None and status.name not in selected:
         return "skipped: implementation not selected"
     if status.status == "not_applicable":
@@ -120,7 +122,9 @@ def settle(report: pytest.TestReport, status: ImplementationStatus) -> tuple[str
     """The row's Rack outcome and detail for one report phase, or None.
 
     A selected planned or suspended row that fails is turned into an expected
-    failure, so it is reported without failing the run.
+    failure, so it is reported without failing the run. A known failure the
+    test marks with a strict ``xfail`` is a deferred row, with the xfail
+    reason as its detail.
     """
     if report.when == "setup" and report.skipped:
         detail = _skip_detail(report)
@@ -132,6 +136,8 @@ def settle(report: pytest.TestReport, status: ImplementationStatus) -> tuple[str
         report.outcome = "skipped"
         report.wasxfail = f"{status.status} {status.name}: {detail}"
         return status.status, detail
+    if report.skipped and hasattr(report, "wasxfail"):
+        return "deferred", str(report.wasxfail).removeprefix("reason: ")
     return ("pass" if report.passed else "fail"), ""
 
 
@@ -160,6 +166,5 @@ def _cached(path: str, _mtime_ns: int, _size: int) -> TestDeclaration | str | No
     try:
         declaration = load_declaration(Path(path))
     except DeclarationError as error:
-        # An invalid run(case, impl) file is reported by Rack's own collector.
-        return str(error) if source_form(Path(path)) == "pytest" else None
-    return declaration if declaration.form == "pytest" else None
+        return str(error)
+    return declaration

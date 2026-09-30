@@ -108,37 +108,40 @@ def replace_in(path: Path, old: str, new: str) -> None:
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
-def test_default_run_expands_cases_by_implementation(tmp_path: Path) -> None:
+def test_rows_follow_header_statuses(tmp_path: Path) -> None:
     result, rows = run_suite(copy_suite(tmp_path))
 
     assert result.returncode == 0, result.stdout + result.stderr
+    parsing = "test_duration_parsing"
+    formatting = "test_duration_formatting"
+    round_trip = "test_duration_round_trip"
+    provenance = "test_vector_files_name_provenance"
     assert outcomes(rows) == {
-        "L0_001[hours_and_minutes-python]": ("passed", "pass"),
-        "L0_001[hours_and_minutes-shadow]": ("passed", "pass"),
-        "L0_001[hours_and_minutes-rust]": ("skipped", "planned"),
-        "L0_001[hours_and_minutes-cpp]": ("skipped", "suspended"),
-        "L0_001[fractional_hours-python]": ("passed", "pass"),
-        "L0_001[fractional_hours-shadow]": ("xfailed", "deferred"),
-        "L0_001[fractional_hours-rust]": ("skipped", "planned"),
-        "L0_001[fractional_hours-cpp]": ("skipped", "suspended"),
-        "L0_001[long_form-python]": ("skipped", "skipped"),
-        "L0_001[long_form-shadow]": ("skipped", "skipped"),
-        "L0_001[long_form-rust]": ("skipped", "planned"),
-        "L0_001[long_form-cpp]": ("skipped", "suspended"),
-        "L0_002[L0_001_parse_duration-check]": ("passed", "pass"),
-        "L0_002[L0_003_format_duration-check]": ("passed", "pass"),
-        "L0_003[ninety_minutes-python]": ("passed", "pass"),
-        "L0_003[ninety_minutes-shadow]": ("passed", "pass"),
-        "L0_003[zero-python]": ("passed", "pass"),
-        "L0_003[zero-shadow]": ("passed", "pass"),
-        "L0_006[ninety_minutes-python]": ("passed", "pass"),
-        "L0_006[ninety_minutes-shadow]": ("passed", "pass"),
-        "L0_006[zero-python]": ("passed", "pass"),
-        "L0_006[zero-shadow]": ("passed", "pass"),
+        f"{parsing}[hours_and_minutes-python]": ("passed", "pass"),
+        f"{parsing}[hours_and_minutes-shadow]": ("passed", "pass"),
+        f"{parsing}[hours_and_minutes-rust]": ("skipped", "planned"),
+        f"{parsing}[hours_and_minutes-cpp]": ("skipped", "suspended"),
+        f"{parsing}[fractional_hours-python]": ("passed", "pass"),
+        f"{parsing}[fractional_hours-shadow]": ("xfailed", "deferred"),
+        f"{parsing}[fractional_hours-rust]": ("skipped", "planned"),
+        f"{parsing}[fractional_hours-cpp]": ("skipped", "suspended"),
+        f"{parsing}[long_form-python]": ("passed", "pass"),
+        f"{parsing}[long_form-shadow]": ("passed", "pass"),
+        f"{parsing}[long_form-rust]": ("skipped", "planned"),
+        f"{parsing}[long_form-cpp]": ("skipped", "suspended"),
+        f"{provenance}[L0_001_parse_duration]": ("passed", "pass"),
+        f"{provenance}[L0_003_format_duration]": ("passed", "pass"),
+        f"{formatting}[ninety_minutes-python]": ("passed", "pass"),
+        f"{formatting}[ninety_minutes-shadow]": ("passed", "pass"),
+        f"{formatting}[zero-python]": ("passed", "pass"),
+        f"{formatting}[zero-shadow]": ("passed", "pass"),
+        f"{round_trip}[ninety_minutes-python]": ("passed", "pass"),
+        f"{round_trip}[ninety_minutes-shadow]": ("passed", "pass"),
+        f"{round_trip}[zero-python]": ("passed", "pass"),
+        f"{round_trip}[zero-shadow]": ("passed", "pass"),
         "test_legacy_style_still_runs": ("passed", ""),
     }
-    assert "lane full" in rows["L0_001[long_form-python]"][2]
-    assert rows["L0_001[hours_and_minutes-rust]"][2] == "not ported yet"
+    assert rows[f"{parsing}[hours_and_minutes-rust]"][2] == "planned: not ported yet (#1)"
 
 
 def test_suite_skip_markers_are_recorded_as_skipped_rows(tmp_path: Path) -> None:
@@ -147,7 +150,7 @@ def test_suite_skip_markers_are_recorded_as_skipped_rows(tmp_path: Path) -> None
         "import pytest\n\n\n"
         "def pytest_collection_modifyitems(config, items):\n"
         "    for item in items:\n"
-        "        if item.get_closest_marker('shadow_off') or item.name.endswith('-shadow]'):\n"
+        "        if item.name.endswith('-shadow]'):\n"
         "            item.add_marker(pytest.mark.skip(reason='shadow disabled by suite'))\n",
         encoding="utf-8",
     )
@@ -155,7 +158,7 @@ def test_suite_skip_markers_are_recorded_as_skipped_rows(tmp_path: Path) -> None
     result, rows = run_suite(suite)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert rows["L0_001[hours_and_minutes-shadow]"] == (
+    assert rows["test_duration_parsing[hours_and_minutes-shadow]"] == (
         "skipped",
         "skipped",
         "shadow disabled by suite",
@@ -164,100 +167,64 @@ def test_suite_skip_markers_are_recorded_as_skipped_rows(tmp_path: Path) -> None
     assert skip_lines and not any("plugin.py" in line for line in skip_lines)
 
 
-def test_lane_and_implementation_selection(tmp_path: Path) -> None:
-    result, rows = run_suite(copy_suite(tmp_path), "--rack-impl", "shadow,rust", lane="full")
+def test_implementation_selection(tmp_path: Path) -> None:
+    result, rows = run_suite(copy_suite(tmp_path), "--rack-impl", "shadow,rust")
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert rows["L0_001[long_form-shadow]"][:2] == ("passed", "pass")
-    assert rows["L0_001[long_form-python]"][:2] == ("skipped", "skipped")
-    assert rows["L0_001[long_form-python]"][2] == "implementation not selected"
-    assert rows["L0_001[long_form-cpp]"][:2] == ("skipped", "skipped")
-    # A selected planned implementation without an adapter reports an error without gating.
-    assert rows["L0_001[long_form-rust]"][:2] == ("xfailed", "error")
-    assert "no adapter" in rows["L0_001[long_form-rust]"][2]
-    assert rows["L0_002[L0_001_parse_duration-check]"][:2] == ("passed", "pass")
-
-
-def test_deferral_must_match_exactly_and_is_removed_once_passing(tmp_path: Path) -> None:
-    suite = copy_suite(tmp_path)
-    replace_in(suite / TEST_L0_001, '"actual": 3600', '"actual": 3601')
-
-    result, rows = run_suite(suite)
-
-    assert result.returncode == 1
-    assert rows["L0_001[fractional_hours-shadow]"] == (
-        "failed",
-        "fail",
-        "differences do not match the declared deferral",
+    parsing = "test_duration_parsing"
+    assert rows[f"{parsing}[long_form-shadow]"][:2] == ("passed", "pass")
+    assert rows[f"{parsing}[long_form-python]"] == (
+        "skipped",
+        "skipped",
+        "skipped: implementation not selected",
+    )
+    assert rows[f"{parsing}[long_form-cpp]"][:2] == ("skipped", "skipped")
+    # A selected planned implementation that fails is reported without gating.
+    assert rows[f"{parsing}[long_form-rust]"][:2] == ("xfailed", "planned")
+    assert "NotImplementedError" in rows[f"{parsing}[long_form-rust]"][2]
+    # A check tests no implementation, so selection never skips it.
+    assert rows["test_vector_files_name_provenance[L0_001_parse_duration]"][:2] == (
+        "passed",
+        "pass",
     )
 
+
+def test_known_failure_is_a_strict_xfail(tmp_path: Path) -> None:
+    result, rows = run_suite(copy_suite(tmp_path))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert rows["test_duration_parsing[fractional_hours-shadow]"] == (
+        "xfailed",
+        "deferred",
+        "#2: shadow truncates fractional amounts",
+    )
+
+    # Once the known failure passes, the strict xfail fails the run until the
+    # entry is removed.
     suite = copy_suite(tmp_path / "second")
     replace_in(suite / VECTORS_L0_001, '"text": "1.5h"', '"text": "90m"')
 
     result, rows = run_suite(suite)
 
     assert result.returncode == 1
-    assert rows["L0_001[fractional_hours-shadow]"][:2] == ("failed", "fail")
-    assert "remove its deferral" in rows["L0_001[fractional_hours-shadow]"][2]
+    assert rows["test_duration_parsing[fractional_hours-shadow]"][:2] == ("failed", "fail")
 
 
-def test_failures_carry_typed_differences(tmp_path: Path) -> None:
+def test_a_failing_row_is_a_fail_row(tmp_path: Path) -> None:
     suite = copy_suite(tmp_path)
     replace_in(
         suite / VECTORS_L0_001, '"expect": {"seconds": 5400}}', '"expect": {"seconds": 5401}}'
     )
 
-    result, _rows = run_suite(suite)
-    payload = json.loads((suite / "report.json").read_text(encoding="utf-8"))
-    (row,) = [t for t in payload["tests"] if t["nodeid"].endswith("[hours_and_minutes-python]")]
-    properties = {key: value for item in row["user_properties"] for key, value in item.items()}
+    result, rows = run_suite(suite)
+    properties = row_properties(suite, "test_duration_parsing[hours_and_minutes-python]")
 
     assert result.returncode == 1
-    assert properties["rack_outcome"] == "fail"
-    assert properties["rack_differences"] == [
-        {"path": ["seconds"], "kind": "value", "expected": 5401, "actual": 5400}
-    ]
-    assert "['seconds'] value: expected=5401 actual=5400" in result.stdout
-    assert "L0_001 hours_and_minutes [python]: 1 difference(s)" in result.stdout
+    assert rows["test_duration_parsing[hours_and_minutes-python]"][:2] == ("failed", "fail")
+    # The test body's own assertion reports the difference; Rack adds none.
+    assert properties["rack_differences"] == []
+    assert "assert 5400 == 5401" in result.stdout
     assert "plugin.py" not in result.stdout
-
-
-def test_invalid_declarations_fail_collection(tmp_path: Path) -> None:
-    suite = copy_suite(tmp_path)
-    replace_in(suite / VECTORS_L0_001, '"id": "fractional_hours"', '"id": "fractional"')
-
-    result, _rows = run_suite(suite)
-
-    assert result.returncode != 0
-    assert "deferral for unknown case 'fractional_hours'" in result.stdout
-
-    suite = copy_suite(tmp_path / "second")
-    replace_in(suite / VECTORS_L0_001, '"lane": "full"', '"lane": "nightly"')
-
-    result, _rows = run_suite(suite)
-
-    assert result.returncode != 0
-    assert "case lanes ['nightly']" in result.stdout
-
-    # A broken trace fails collection, not just the audit: a registry call that
-    # does not exist, and one the handler never makes.
-    suite = copy_suite(tmp_path / "third")
-    registry = suite / "suite_support" / "operations.toml"
-    replace_in(registry, 'function = "parse_duration_shadow"', 'function = "gone"')
-
-    result, _rows = run_suite(suite)
-
-    assert result.returncode != 0
-    assert "shadow: suite_support/durations.py defines no gone" in result.stdout
-
-    suite = copy_suite(tmp_path / "fourth")
-    registry = suite / "suite_support" / "operations.toml"
-    replace_in(registry, 'function = "parse_duration_shadow"', 'function = "format_duration"')
-
-    result, _rows = run_suite(suite)
-
-    assert result.returncode != 0
-    assert "shadow: handler _parse_shadow never calls format_duration" in result.stdout
 
 
 def test_legacy_file_mentioning_rack_text_is_not_captured(tmp_path: Path) -> None:
@@ -273,48 +240,6 @@ def test_legacy_file_mentioning_rack_text_is_not_captured(tmp_path: Path) -> Non
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert rows["test_mentions_rack"][:2] == ("passed", "")
-
-
-BUDGET_TEST = """from suite_support.operations import ParseDuration
-
-RACK = {
-    "id": "L0_005",
-    "title": "Duration parsing budget",
-    "purpose": {
-        "checks": "Parsing stays within its time budget.",
-        "because": "A slow parser stalls every caller that loads schedules.",
-    },
-    "operations": ["ParseDuration"],
-    "cases": {"file": "vectors/L0_001_parse_duration.json"},
-    "expect": {
-        "source": "budget",
-        "metric": "wall_seconds",
-        "max": 60,
-        "max_ratio": 0.000001,
-        "relative_to": "python",
-    },
-    "implementations": {
-        "python": {"status": "implemented"},
-        "shadow": {"status": "implemented"},
-    },
-}
-
-
-def run(case, impl):
-    return impl.batch([ParseDuration(text=case.inputs["text"])])
-"""
-
-
-def test_budget_expectation_measures_run_time(tmp_path: Path) -> None:
-    suite = copy_suite(tmp_path)
-    (suite / "L0_units" / "test_L0_005_parse_budget.py").write_text(BUDGET_TEST, encoding="utf-8")
-
-    result, rows = run_suite(suite)
-
-    # The baseline row skips its own ratio check; the other row exceeds a near-zero ratio.
-    assert rows["L0_005[hours_and_minutes-python]"][:2] == ("passed", "pass")
-    assert rows["L0_005[hours_and_minutes-shadow]"][:2] == ("failed", "fail")
-    assert result.returncode == 1
 
 
 PYTEST_FORM_TEST = """import json
@@ -361,7 +286,7 @@ def test_parse_duration(case, implementation):
 """
 
 
-def test_pytest_form_files_are_collected_by_pytest_not_rack(tmp_path: Path) -> None:
+def test_a_plain_file_with_an_implementations_table(tmp_path: Path) -> None:
     suite = copy_suite(tmp_path)
     (suite / "L0_units" / "test_L0_007_plain_parse.py").write_text(
         PYTEST_FORM_TEST, encoding="utf-8"

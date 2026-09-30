@@ -23,9 +23,7 @@ from rack.declarations import (
     declared_test_files,
     load_declaration,
     load_vector_file,
-    validate_deferrals,
 )
-from rack.tracing import trace_problems
 
 AUDIT_REPORT_TYPE = "rack.audit_report"
 AUDIT_REPORT_VERSION = "a1"
@@ -519,13 +517,12 @@ def _validate_declared_suite(
     strata: tuple[str, ...],
     failures: list[AuditFailure],
 ) -> None:
-    """Check self-declared files: declarations, cases, code, id collisions, test imports."""
+    """Check self-declared files: declarations, resources, code, ids, test imports."""
     declarations = _suite_declarations(root, strata)
     for stratum in selected:
         for path in declared_test_files(root / stratum):
             declaration = _read_declared(root, stratum, path, failures)
             if declaration is not None:
-                _validate_declared_cases(root, stratum, declaration, failures)
                 _validate_declared_resources(root, stratum, declaration, failures)
                 _validate_declared_code(root, project, stratum, declaration, failures)
                 _validate_native_tests(root, project, stratum, declaration, failures)
@@ -557,7 +554,7 @@ def resource_problems(declaration: TestDeclaration) -> list[tuple[str, str]]:
     other JSON resource, such as a captured authority file, needs a top-level
     ``provenance``. Other files are checked for existence only.
     """
-    source = _source_outside_header(declaration.path) if declaration.form == "pytest" else None
+    source = _source_outside_header(declaration.path)
     problems: list[tuple[str, str]] = []
     for item in declaration.resources:
         path = declaration.path.parent / item
@@ -611,10 +608,10 @@ def _validate_declared_code(
     declaration: TestDeclaration,
     failures: list[AuditFailure],
 ) -> None:
-    for problem in [*trace_problems(declaration), *listed_code_problems(project, declaration)]:
+    for problem in listed_code_problems(project, declaration):
         failures.append(
             _failure(
-                "untraced",
+                "unresolved_code",
                 f"{declaration.path.name}: {problem}",
                 _relative(root, declaration.path),
                 stratum=stratum,
@@ -752,28 +749,6 @@ def _read_declared(
             )
         )
     return None
-
-
-def _validate_declared_cases(
-    root: Path, stratum: str, declaration: TestDeclaration, failures: list[AuditFailure]
-) -> None:
-    # Catalog cases need suite code to enumerate; collection validates them.
-    file_ref = declaration.cases.get("file")
-    if not isinstance(file_ref, str):
-        return
-    try:
-        vectors = load_vector_file(declaration.path.parent / file_ref)
-        validate_deferrals(declaration, tuple(case.id for case in vectors.cases))
-    except DeclarationError as exc:
-        failures.append(
-            _failure(
-                "invalid_cases",
-                str(exc),
-                _relative(root, declaration.path),
-                stratum=stratum,
-                subtest=declaration.path.name,
-            )
-        )
 
 
 def _validate_declared_ids(

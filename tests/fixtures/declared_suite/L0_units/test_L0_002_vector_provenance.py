@@ -1,3 +1,8 @@
+import json
+from pathlib import Path
+
+import pytest
+
 RACK = {
     "id": "L0_002",
     "title": "Vector provenance",
@@ -7,11 +12,12 @@ RACK = {
     },
     "kind": "check",
     "concerns": ["fixture"],
-    "cases": {"catalog": "fixture.vector_files"},
 }
 
+VECTOR_FILES = sorted((Path(__file__).parent / "vectors").glob("*.json"))
 
-def run(case, impl):
-    payload = case.service("vector_reader").read(case.inputs["path"])
-    kind = payload["provenance"]["kind"]
-    return [] if kind in ("specification", "authority") else [f"provenance kind {kind}"]
+
+@pytest.mark.parametrize("path", VECTOR_FILES, ids=[path.stem for path in VECTOR_FILES])
+def test_vector_files_name_provenance(path):
+    kind = json.loads(path.read_text(encoding="utf-8"))["provenance"]["kind"]
+    assert kind in ("specification", "authority")

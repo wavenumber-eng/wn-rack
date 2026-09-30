@@ -15,9 +15,9 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from rack.audit import audit_suite
-from rack.tracing import declared_calls
 from rack.declarations import (
     STATUSES,
+    VECTOR_SCHEMA,
     DeclarationError,
     TestDeclaration,
     declared_test_files,
@@ -38,7 +38,7 @@ DECLARATION_AUDIT_CODES = frozenset(
         "invalid_declaration",
         "invalid_resource",
         "test_module_import",
-        "untraced",
+        "unresolved_code",
         "native_test",
     }
 )
@@ -58,8 +58,8 @@ class TestEntry:
     statuses: Mapping[str, str] = field(default_factory=dict)
     notes: Mapping[str, str] = field(default_factory=dict)  # issue or reason per implementation
     code: Mapping[str, tuple[dict[str, str], ...]] = field(default_factory=dict)
-    deferred: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
-    # Cases of the implementations this file's test runs; a native test is one case.
+    # Cases of the implementations this file's test runs: the cases of the
+    # vector files its header lists, else its recorded rows. A native test is one case.
     case_count: int | None = None
     # Implementations tested by a native test, with that test's file name.
     native: Mapping[str, str] = field(default_factory=dict)
@@ -155,7 +155,6 @@ def _declared_entry(stratum: str, path: Path, default_concerns: tuple[str, ...])
             if entry.status != "implemented"
         },
         code=_code_cells(declaration),
-        deferred=declaration.deferred_issues,
         case_count=_case_count(declaration),
         native={
             entry.name: Path(entry.test).name for entry in declaration.implementations if entry.test
@@ -164,8 +163,8 @@ def _declared_entry(stratum: str, path: Path, default_concerns: tuple[str, ...])
 
 
 def _code_cells(declaration: TestDeclaration) -> dict[str, tuple[dict[str, str], ...]]:
-    """The code each implementation exercises: the header's list, else the registry trace."""
-    calls = listed_code(declaration) or declared_calls(declaration)
+    """The code each implementation exercises, as its header entry lists it."""
+    calls = listed_code(declaration)
     return {
         name: tuple(
             {"file": ref.file, "module": ref.module, "function": ref.function} for ref in refs
@@ -175,13 +174,31 @@ def _code_cells(declaration: TestDeclaration) -> dict[str, tuple[dict[str, str],
 
 
 def _case_count(declaration: TestDeclaration) -> int | None:
-    file_ref = declaration.cases.get("file")
-    if not isinstance(file_ref, str):
-        return None
+    """Cases in the vector files the header lists; None when it lists none.
+
+    A plain test parametrizes over its vector file's cases, so they are the
+    cases each implementation it runs owes.
+    """
+    total = 0
+    found = False
+    for item in declaration.resources:
+        path = declaration.path.parent / item
+        if path.suffix != ".json" or not _is_vector_file(path):
+            continue
+        try:
+            total += len(load_vector_file(path).cases)
+        except DeclarationError:
+            return None
+        found = True
+    return total if found else None
+
+
+def _is_vector_file(path: Path) -> bool:
     try:
-        return len(load_vector_file(declaration.path.parent / file_ref).cases)
-    except DeclarationError:
-        return None
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return isinstance(payload, dict) and payload.get("schema") == VECTOR_SCHEMA
 
 
 def _manifest_concerns(stratum_dir: Path) -> tuple[dict[str, tuple[str, ...]], tuple[str, ...]]:
@@ -324,7 +341,7 @@ def _case_counts(
 
 
 def _case_total(implementation: str, implemented: Sequence[TestEntry]) -> int | None:
-    """Cases the implementation owes; a native test is one case, an unrun catalog unknown."""
+    """Cases the implementation owes; a native test is one case, an unrun file unknown."""
     counts = [1 if implementation in entry.native else entry.case_count for entry in implemented]
     if None in counts:
         return None
@@ -366,10 +383,14 @@ def _debt(
     return {
         "legacy_files": [f"{e.stratum}/{e.file}" for e in entries if e.kind == "legacy"],
         "deferred": [
-            {"test": e.id, "implementation": name, "case": case, "issue": issue}
-            for e in entries
-            for name, per_case in e.deferred.items()
-            for case, issue in per_case.items()
+            {
+                "test": row.test,
+                "implementation": row.implementation,
+                "case": row.case,
+                "issue": row.detail,
+            }
+            for row in rows
+            if row.outcome == "deferred"
         ],
         "planned": _status_debt(entries, "planned"),
         "suspended": _status_debt(entries, "suspended"),

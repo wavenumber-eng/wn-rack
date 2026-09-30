@@ -1,4 +1,8 @@
-from suite_support.operations import FormatDuration, ParseDuration
+import json
+from pathlib import Path
+
+import pytest
+from suite_support import durations
 
 RACK = {
     "id": "L0_006",
@@ -8,18 +12,23 @@ RACK = {
         "because": "Saved schedules are reloaded from formatted text, so a lossy pair corrupts them.",
     },
     "concerns": ["fixture"],
-    "operations": ["FormatDuration", "ParseDuration"],
-    "cases": {"file": "vectors/L0_003_format_duration.json"},
-    "observation": "DurationResult",
-    "expect": {"source": "property", "loader": "fixture.same_seconds", "comparator": "exact"},
+    "resources": ["vectors/L0_003_format_duration.json"],
     "implementations": {
         "python": {"status": "implemented"},
         "shadow": {"status": "implemented"},
     },
 }
 
+VECTORS = Path(__file__).parent / "vectors" / "L0_003_format_duration.json"
+CASES = json.loads(VECTORS.read_text(encoding="utf-8"))["cases"]
+IMPLEMENTATIONS = {
+    "python": durations.parse_duration,
+    "shadow": durations.parse_duration_shadow,
+}
 
-def run(case, impl):
-    (formatted,) = impl.batch([FormatDuration(seconds=case.inputs["seconds"])])
-    (parsed,) = impl.batch([ParseDuration(text=formatted["text"])])
-    return parsed
+
+@pytest.mark.parametrize("implementation", IMPLEMENTATIONS)
+@pytest.mark.parametrize("case", CASES, ids=[case["id"] for case in CASES])
+def test_duration_round_trip(case, implementation):
+    seconds = case["inputs"]["seconds"]
+    assert IMPLEMENTATIONS[implementation](durations.format_duration(seconds)) == seconds

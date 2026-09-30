@@ -69,7 +69,7 @@ sets `parallel = true`; other strata run serially and Rack prints why. Rack
 passes `--dist loadfile`, so each test file stays on one worker. An
 implementation that needs an exclusive resource sets `parallel = false` under
 `[implementations.<name>]` in `rack.toml`; while it is selected, strata run
-serially. Session fixtures and adapters start once per worker, and progress
+serially. Session fixtures start once per worker, and progress
 events are written per worker and merged by the progress tail.
 
 ### Progress Reporting
@@ -228,8 +228,9 @@ Behavior:
 - self-declared test files need no `[[subtests]]` entry, and an entry for one
   fails (`declared_file_in_manifest`)
 - validates each self-declared file's `RACK` declaration
-  (`invalid_declaration`) and, for vector-file cases, the vectors and their
-  deferrals (`invalid_cases`)
+  (`invalid_declaration`), and each file its header lists in `resources`:
+  it exists, the test names it, and a JSON file states its provenance or is a
+  valid vector file (`invalid_resource`, `invalid_cases`)
 - rejects a self-declared id used by another test in the suite
   (`duplicate_test_id`)
 - rejects imports of a test module by a self-declared file, and imports of a
@@ -237,8 +238,8 @@ Behavior:
   legacy test files are not checked
 - reports every failing declaration requirement separately
   (`invalid_declaration`, message prefixed with the requirement)
-- traces each self-declared test through the operation registry: declared
-  operations, dispatch lines, handlers, and library calls (`untraced`)
+- resolves each `code` entry a header lists to a definition in the named file
+  (`unresolved_code`)
 - fails every file without `RACK` in a stratum whose `STRATUM.toml` sets
   `require_declared = true` (`undeclared_test_file`)
 - requires the conventional `L99_signoff` stratum unless overridden with
@@ -276,27 +277,16 @@ Behavior:
   failing, deferred, errored, and not run
 - debt: legacy test files, deferred cases, planned and suspended
   implementations, failing gating rows, and declaration audit findings
-- a catalog's case count comes from its latest rows; before its first run it
-  is unknown and shows as `?`
+- a test's case count is the number of cases in the vector files its header
+  lists in `resources`; a test that lists none counts its latest rows, and
+  before its first run its count is unknown and shows as `?`
+- a deferred case is a row the test marks with a strict `xfail` (a known
+  failure); its xfail reason is reported as the issue
 - `rack report` renders the same numbers as the PARITY section of
   `report.html`
 
 JSON output uses the `rack.parity_report` `a0` contract at
 `docs/contracts/rack_parity_report.a0.schema.json`.
-
-## `rack trace`
-
-Show exactly what each implementation runs for a self-declared test.
-
-```bash
-rack trace L0_004
-rack trace L0 --format json
-```
-
-For every operation the test declares, and every implementation, it prints the
-dispatch line, the handler, and the library functions called, each with its
-file and line, plus the status and reason of implementations that do not run.
-A broken hop is printed as a problem and the command exits `1`.
 
 ## `rack new stratum`
 

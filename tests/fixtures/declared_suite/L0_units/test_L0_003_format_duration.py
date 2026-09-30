@@ -1,4 +1,8 @@
-from suite_support.operations import FormatDuration
+import json
+from pathlib import Path
+
+import pytest
+from suite_support import durations
 
 RACK = {
     "id": "L0_003",
@@ -8,18 +12,24 @@ RACK = {
         "because": "Reports show this text to people, who read a wrong unit as a wrong schedule.",
     },
     "concerns": ["fixture"],
-    "operations": ["FormatDuration"],
-    "cases": {"file": "vectors/L0_003_format_duration.json"},
-    "observation": "FormattedDuration",
-    "expect": {"source": "authority", "loader": "fixture.reference", "comparator": "exact"},
+    "resources": ["vectors/L0_003_format_duration.json"],
     "implementations": {
         "python": {"status": "implemented"},
         "shadow": {"status": "implemented"},
     },
 }
 
+HERE = Path(__file__).parent
+CASES = json.loads((HERE / "vectors" / "L0_003_format_duration.json").read_text("utf-8"))["cases"]
+IMPLEMENTATIONS = {
+    "python": durations.format_duration,
+    "shadow": durations.format_duration,
+}
 
-def run(case, impl):
-    (result,) = impl.batch([FormatDuration(seconds=case.inputs["seconds"])])
-    (case.workdir / "result.txt").write_text(result["text"], encoding="utf-8")
-    return result
+
+@pytest.mark.parametrize("implementation", IMPLEMENTATIONS)
+@pytest.mark.parametrize("case", CASES, ids=[case["id"] for case in CASES])
+def test_duration_formatting(case, implementation):
+    # The captured reference text for each case, one file per case id.
+    reference = json.loads((HERE / "reference" / f"{case['id']}.json").read_text("utf-8"))
+    assert IMPLEMENTATIONS[implementation](case["inputs"]["seconds"]) == reference["text"]

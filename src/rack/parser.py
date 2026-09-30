@@ -26,7 +26,6 @@ Examples:
   rack report           Generate HTML report
   rack audit            Audit manifest/test-suite drift
   rack parity           Account implementations, cases, and debt
-  rack trace L0_004     Show test -> operation -> handler -> library code per implementation
   rack new stratum L2_roundtrip       Create new stratum
   rack new subtest L2 003 my_test     Create new subtest
         """,
@@ -81,9 +80,6 @@ Examples:
     parity_parser.add_argument("--by", choices=["stratum", "concern"], default="stratum")
     parity_parser.add_argument("--format", choices=["text", "json"], default="text")
 
-    trace_parser = subparsers.add_parser("trace", help="Show what each implementation runs for a test")
-    trace_parser.add_argument("target", help="Test id (L0_004) or stratum (L0)")
-    trace_parser.add_argument("--format", choices=["text", "json"], default="text")
 
     version_parser = subparsers.add_parser("version", help="Print version information")
     version_parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
